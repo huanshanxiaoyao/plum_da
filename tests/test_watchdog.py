@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 
+import run_watchdog
 from ingest import heartbeat
 from run_watchdog import Alert, evaluate, filter_cooldown, read_alert_state, write_alert_state
 
@@ -146,3 +147,28 @@ def test_状态目录默认挂在落地目录下且不会被清理误删(tmp_pat
     heartbeat.write_success(directory, {})
     prune_landing(tmp_path, datetime(2026, 9, 7).date(), retention_days=0)
     assert heartbeat.read(directory) is not None
+
+
+def test_业务错误码算发送失败():
+    """飞书把「签名不对 / 机器人被停用 / 限频」放在 HTTP 200 的响应体里。
+
+    只看状态码会把这三种情况记成送达，进而写入冷却期——接下来几个小时连重试都没有，
+    看门狗静默失效。
+    """
+
+    assert run_watchdog._alert_response_ok(b'{"code":19021,"msg":"sign match fail"}') is False
+
+
+def test_业务码为零算送达():
+    assert run_watchdog._alert_response_ok(b'{"code":0,"msg":"success"}') is True
+
+
+def test_读不懂的响应体按送达处理():
+    """判错成「没送达」只会重发一条重复告警；判错成「送达」会吞掉真实告警。
+
+    所以未知形态一律放行——只有**明确读到非零 code** 才判失败。
+    """
+
+    assert run_watchdog._alert_response_ok(b"<html>502</html>") is True
+    assert run_watchdog._alert_response_ok(b"[]") is True
+    assert run_watchdog._alert_response_ok(b'{"msg":"ok"}') is True

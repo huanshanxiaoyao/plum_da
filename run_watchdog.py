@@ -251,6 +251,11 @@ def send(text: str, webhook: str, timeout: float = 10.0) -> bool:
 
     返回是否送达。任何异常都吞掉并返回 False——看门自己不能因为发不出去而崩溃，
     崩溃了下一轮的判定也一起没了。**永远不要把 webhook URL 打进日志**，它本身是凭据。
+
+    **HTTP 200 不等于送达**：飞书机器人把业务错误（签名不对、机器人被停用、被限频）
+    也放在 200 的响应体里，用 `code != 0` 表示。只看状态码会让「发失败」被记成
+    「发成功」，进而写入冷却期状态——于是接下来 N 小时连重试都不会有，看门狗静默失效，
+    而它存在的全部意义就是在没人看的时候还能报警。所以业务码必须一起判。
     """
 
     payload = json.dumps({"msg_type": "text", "content": {"text": text}}).encode("utf-8")
@@ -259,10 +264,43 @@ def send(text: str, webhook: str, timeout: float = 10.0) -> bool:
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as resp:  # noqa: S310
-            return 200 <= resp.status < 300
+            if not 200 <= resp.status < 300:
+                logger.error("告警发送失败：HTTP %s", resp.status)
+                return False
+            body = resp.read(_MAX_ALERT_RESPONSE_BYTES)
     except (urllib.error.URLError, OSError, ValueError) as exc:
         logger.error("告警发送失败：%s", type(exc).__name__)
         return False
+    return _alert_response_ok(body)
+
+
+#: 只读足够判业务码的长度。响应体不可信，不能无上限读进内存。
+_MAX_ALERT_RESPONSE_BYTES = 4096
+
+
+def _alert_response_ok(body: bytes) -> bool:
+    """判飞书响应体里的业务码。**读不懂时按送达处理。**
+
+    这个方向是刻意的：判错成「没送达」只会让下一轮重发一条重复告警，判错成「送达」
+    却会吞掉一次真实告警。但响应体格式变化 / 非 JSON 不该让每轮都重复轰炸群，
+    所以只在**明确读到非零 code** 时才判失败，其余一律放行并留日志。
+    """
+
+    try:
+        parsed = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        logger.warning("告警响应体不是 JSON，按送达处理")
+        return True
+    if not isinstance(parsed, dict):
+        return True
+    code = parsed.get("code", parsed.get("StatusCode", 0))
+    if isinstance(code, bool) or not isinstance(code, int):
+        return True
+    if code != 0:
+        # msg 是飞书自己的错误描述，不含我们的告警正文，可以安全落日志。
+        logger.error("告警被拒绝：code=%s msg=%s", code, parsed.get("msg"))
+        return False
+    return True
 
 
 def main(argv: Optional[List[str]] = None) -> int:
