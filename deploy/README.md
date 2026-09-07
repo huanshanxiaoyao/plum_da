@@ -43,9 +43,9 @@ PG 大版本必须是 **16**，与机器 A 及国内库保持一致（见上游 
 这里是独立的分析库，与主业务库、与备份落地的实例都无关——如果第 0 步发现已有集群
 且大版本就是 16，**直接复用它，不要再装一个**，只需记住它的真实端口。
 
-`postgresql-16.service` 出现在 `plum-da-ingest.service` 的 `After=` 里。
-若本机集群的单元名不是这个，**改 service 文件里的 `After=`**，否则那句依赖是空的
-（`After=` 指向不存在的单元不会报错，只是不生效）。
+`plum-da-ingest.service` 的 `After=` 默认写的是 Debian/Ubuntu 的 `postgresql.service`。
+RHEL 系是 `postgresql-16.service`，**不一样就改 service 文件**——`After=` 指向不存在
+的单元不会报错，只是那句依赖静默失效。第 0 步的体检会打印本机的真实单元名。
 
 ## 2. 系统账号
 
@@ -213,3 +213,71 @@ sudo systemctl start plum-da-ingest.service && systemctl status plum-da-ingest.s
 
 失败会以非 0 退出，由 systemd 记录；**装载失败不会自动重试**，
 下一次定时执行时那个文件仍在待装列表里，会自然重来。
+
+## 8. 上入库滞后看门
+
+**这一步不是可选的。** `plum-da-ingest.service` 是 `oneshot`，失败只以非 0 退出、由
+systemd 记在 journal 里，**没有任何人会收到通知**；而机器 A 只保留 30 天。两者相乘，
+B 停拉超过 30 天，那几天的数据就永久没了，且现象和「那几天没流量」完全一样。
+
+```bash
+sudo cp /opt/plum_da/deploy/plum-da-watchdog.service \
+        /opt/plum_da/deploy/plum-da-watchdog.timer \
+        /opt/plum_da/deploy/plum-da-watchdog-ping.service \
+        /opt/plum_da/deploy/plum-da-watchdog-ping.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now plum-da-watchdog.timer plum-da-watchdog-ping.timer
+```
+
+告警地址追加到 `/etc/plum_da.env`（飞书群机器人 webhook，**从密码管理器取，不要写进仓库**）：
+
+```bash
+sudo tee -a /etc/plum_da.env >/dev/null <<'ENV'
+PLUM_DA_ALERT_WEBHOOK=<飞书群机器人 webhook>
+ENV
+```
+
+没配 `PLUM_DA_ALERT_WEBHOOK` 时看门不会静默通过：有异常就以非 0 退出，systemd 至少
+记一笔 failed。但「装了看门却没人收到消息」和「没装看门」在效果上一样，别停在这一步。
+
+自查（`--dry-run` 只读，不发送也不写状态）：
+
+```bash
+sudo -u plum_da bash -lc '
+  set -a; . /etc/plum_da.env; set +a
+  cd /opt/plum_da && .venv/bin/python run_watchdog.py --dry-run
+'
+```
+
+刚装完还没跑过入库时，它应当报 `heartbeat_missing`——**报出来才说明看门是活的**。
+跑一次 `plum-da-ingest.service` 之后再看，两条水位都应有值。
+
+### 两个信号分别意味着什么
+
+看门查两件事，含义不同，阈值也不同，**不要把它们当成一回事**：
+
+| 信号 | 变旧说明什么 | 默认阈值 |
+| --- | --- | --- |
+| 心跳文件 | 入库**进程**没跑完：timer 没触发、PG 连不上、rsync 凭据失效、盘满 | 6 小时 |
+| `max(loaded_at)` | 没有**新数据**进库：可能 B 坏了，**也可能只是 A 那段时间没流量** | 26 小时 |
+
+台账水位天然分不清后两种情况，所以窗口必须跨过一整个日夜低谷。海外线深夜本来就可能
+几小时没有事件，按 6 小时报会在每个凌晨误报一次——**误报几次之后没人再看这个频道，
+连心跳那条真信号也一起废掉了**。阈值可用 `PLUM_DA_WATCHDOG_HEARTBEAT_HOURS` /
+`PLUM_DA_WATCHDOG_LEDGER_HOURS` 覆盖，同类告警的再发间隔用
+`PLUM_DA_WATCHDOG_COOLDOWN_HOURS`（默认 6 小时，防止停三天刷 72 条）。
+
+心跳只在**全流程跑完且拉取、装载都成功**时更新。`--only` / `--skip-pull` 的手工调试
+不刷新它，否则一次调试会掩盖掉之后 6 小时里 timer 其实已经挂了。
+
+### 它覆盖不了什么
+
+⚠️ **机器 B 整机宕机、或 watchdog 自己的 timer 没起来时，本机的一切检查都不会执行**，
+表现同样是「一片安静」。本机看门无法自证存活，这需要一个机器 B 之外的 dead-man switch，
+当前阶段没有。替代手段是 `plum-da-watchdog-ping.timer`：每天 10:05 主动播报一次
+「入库正常」，**由人注意到它的缺席**。这条日报的价值不在内容，在于它没来的那天。
+
+## 9. 装完之后
+
+首次安装到此结束。上线后的日常核对与保留期到期前的确认写在上游仓库的运行手册里，
+不在本文重复：`ai4all_bridge` 的 `docs/ops/products/plum/analytics_pipeline.md`。

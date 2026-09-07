@@ -1,0 +1,11 @@
+[Unit]
+Description=每日播报一次 Plum 数仓存活
+
+[Timer]
+# 本机看门无法自证存活：机器整机宕机时它自己也不会执行，表现同样是「一片安静」。
+# 这条日报的**缺席**才是信号，所以时间要固定在有人看群的时段，不能挑凌晨。
+OnCalendar=*-*-* 10:05:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

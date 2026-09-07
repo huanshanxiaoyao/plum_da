@@ -24,9 +24,15 @@ PARENT = f"{SCHEMA}.product_events"
 # 提前建 7 天：留出足够的失败重试窗口。缺分区意味着**装载直接失败**
 # （PG 对无匹配分区的插入报错），所以宁可多建，空分区几乎不占空间。
 DEFAULT_AHEAD_DAYS = 7
-# 保留 30 天原始事件。ODS 是可重建的落地层，长期口径靠 DWD/DWS，
-# 但重建的前提是机器 A 的文件还在——保留期不得长于机器 A 的文件保留期。
-DEFAULT_RETENTION_DAYS = 30
+# 同时向**过去**建满整个保留期。只建「今天及以后」是错的：装载的是机器 A 已经落好的
+# 文件，接收日天然落在过去——首次部署拉到的第一批就是昨天及更早的，会直接报
+# `no partition found for relation`；停机时间超过预建窗口后再启动也是同一个死法。
+# 建到保留期边界为止，与 `drop_expired_partitions` 的 cutoff 对齐：早于它的数据
+# 无论如何都会被删，没有必要为它留分区。
+DEFAULT_BACKFILL_DAYS = DEFAULT_RETENTION_DAYS = 30
+# 保留 30 天原始事件（`DEFAULT_RETENTION_DAYS`，定义在上面与回补天数同一行）。
+# ODS 是可重建的落地层，长期口径靠 DWD/DWS，但重建的前提是机器 A 的文件还在——
+# 保留期不得长于机器 A 的文件保留期。
 
 _PARTITION_PREFIX = "product_events_"
 
@@ -37,11 +43,19 @@ def partition_name(day: date) -> str:
     return f"{_PARTITION_PREFIX}{day:%Y%m%d}"
 
 
-def ensure_partitions(conn: Any, today: date, ahead_days: int = DEFAULT_AHEAD_DAYS) -> List[str]:
-    """幂等建出 [today, today+ahead_days] 的日分区，返回本次新建的表名。"""
+def ensure_partitions(
+    conn: Any,
+    today: date,
+    ahead_days: int = DEFAULT_AHEAD_DAYS,
+    backfill_days: int = DEFAULT_BACKFILL_DAYS,
+) -> List[str]:
+    """幂等建出 [today-backfill_days, today+ahead_days] 的日分区，返回涉及的表名。
+
+    往回也要建：装载的是机器 A 已落盘的文件，接收日必然在过去（见 `DEFAULT_BACKFILL_DAYS`）。
+    """
 
     created: List[str] = []
-    for offset in range(ahead_days + 1):
+    for offset in range(-backfill_days, ahead_days + 1):
         day = today + timedelta(days=offset)
         name = partition_name(day)
         # 分区边界属于 DDL 语法，PG 不接受参数绑定（`could not determine data type

@@ -1,6 +1,8 @@
 [Unit]
 Description=Plum 数仓入库（拉取 + 装载）
-After=network-online.target postgresql-16.service
+# Debian/Ubuntu 的单元名是 postgresql.service（各 cluster 的元单元），
+# 不是 RHEL 系的 postgresql-16.service。写错不会报错，只是这条依赖静默失效。
+After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]

@@ -1,0 +1,14 @@
+[Unit]
+Description=Plum 数仓入库滞后看门
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=plum_da
+EnvironmentFile=/etc/plum_da.env
+WorkingDirectory=/opt/plum_da
+ExecStart=/opt/plum_da/.venv/bin/python run_watchdog.py
+# 有异常时 run_watchdog.py 以 1 退出，systemd 会把这一轮记成 failed。
+# 这是**冗余**的第二条留痕：即使飞书没配或发送失败，journal 里仍有记录。
+TimeoutStartSec=120

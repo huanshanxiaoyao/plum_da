@@ -11,6 +11,8 @@ import json
 import logging
 from typing import Any, Dict, List, Tuple
 
+import psycopg
+
 from migrations import SCHEMA
 
 from . import ledger
@@ -128,7 +130,12 @@ def load_pending(conn: Any, slices: List[SliceFile]) -> Dict[str, Any]:
             continue
         try:
             result = load_slice(conn, slice_file)
-        except (IntegrityError, ContractError, OSError) as exc:
+        except (IntegrityError, ContractError, OSError, psycopg.Error) as exc:
+            # `psycopg.Error` 必须在列内：数据库侧的拒绝（类型放不下、值不合法、
+            # 缺分区）都是 `DataError` / `UndefinedTable` 这一支，**不是**
+            # `IntegrityError`。漏掉它，异常就会穿出本函数，上面那句「单个文件失败
+            # 不终止整批」名存实亡——一个坏文件不仅自己装不进去，还会带走排在它
+            # 后面的所有正常文件，而且连接停在失败事务里。
             conn.rollback()
             logger.error("装载失败 %s: %s", slice_file.key, exc)
             summary["failed"].append({"file_key": slice_file.key, "error": str(exc)})

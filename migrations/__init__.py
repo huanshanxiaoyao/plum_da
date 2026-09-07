@@ -35,11 +35,11 @@ CREATE TABLE IF NOT EXISTS {SCHEMA}.product_events (
   event_name       TEXT        NOT NULL,
   dict_version     TEXT        NOT NULL,
   client_time      BIGINT,                       -- epoch 毫秒，原样保留不转型
-  skew0_ms         INTEGER,
+  skew0_ms         INTEGER,                     -- 005 起放宽为 BIGINT，见下
   session_id       TEXT,
   props            JSONB       NOT NULL DEFAULT '{{}}'::jsonb,
   server_time      TIMESTAMPTZ NOT NULL,         -- 分区键：接收日
-  clock_skew_ms    INTEGER,
+  clock_skew_ms    INTEGER,                     -- 005 起放宽为 BIGINT，见下
   event_time_utc   TIMESTAMPTZ,
   business_day     DATE        NOT NULL,         -- 事实层唯一日切（D17），非分区键
   time_fallback    TEXT,                         -- future | too_late | no_skew0
@@ -81,7 +81,7 @@ _M003 = f"""
 CREATE TABLE IF NOT EXISTS {SCHEMA}.product_events_dead (
   id             BIGSERIAL PRIMARY KEY,
   reason         TEXT        NOT NULL,
-  event_id       UUID,
+  event_id       UUID,                          -- 005 起放宽为 TEXT，见下
   event_name     TEXT,
   dict_version   TEXT,
   session_id     TEXT,
@@ -120,12 +120,35 @@ CREATE INDEX IF NOT EXISTS ingest_ledger_day_idx
   ON {SCHEMA}.ingest_ledger (business_day, lane);
 """
 
+# 两处「字段类型比上游取值域窄」的修正。合并成一条迁移，因为它们是同一类错误：
+# **把字段的「正常取值」当成「可能取值」来定类型**，而这两列都在装载的必经之路上,
+# 类型放不下就是整份文件 COPY 失败。
+#
+# ① `skew0_ms` / `clock_skew_ms`：INTEGER 只到 ±2147483647 毫秒（约 24.9 天）。
+#    这两列都是**客户端时钟偏差**、不是时长——上游 `EventBatchWire.skew0_ms` 与
+#    `client_time` 都没有取值上限，一台把日期设成 1970 年的设备就能造出 1.7e12 的偏差。
+#    溢出不需要「迟到 25 天」这种边角场景，一个坏客户端就够。为一个**诊断值**放不下
+#    而丢掉整份文件的真实事件，代价完全不对等，故放宽到 BIGINT。
+# ② `product_events_dead.event_id`：死信里的 event_id **本来就可能不是 UUID**——
+#    上游 `_dead_letter` 只判 `isinstance(raw_id, str)` 就原样落盘，而 `bad_envelope`
+#    这一类死信的成因往往正是「event_id 不合法」。用 UUID 存等于要求死信先合法，
+#    自相矛盾；代价是这类死信文件永远装不进去，并连累同批次的正常文件。
+_M005 = f"""
+ALTER TABLE {SCHEMA}.product_events
+  ALTER COLUMN skew0_ms TYPE BIGINT,
+  ALTER COLUMN clock_skew_ms TYPE BIGINT;
+ALTER TABLE {SCHEMA}.product_events_dead
+  ALTER COLUMN event_id TYPE TEXT USING event_id::TEXT;
+"""
+
+
 # (id, sql)。id 一旦发布不得改动，只能追加。
 MIGRATIONS: List[Tuple[str, str]] = [
     ("001_ods_product_events", _M001),
     ("002_ods_indexes", _M002),
     ("003_ods_dead", _M003),
     ("004_ingest_ledger", _M004),
+    ("005_widen_skew_and_dead_event_id", _M005),
 ]
 
 _VERSION_TABLE = f"""

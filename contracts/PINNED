@@ -3,8 +3,9 @@
 # 真源在另一个仓库（单向依赖，见设计文档 D9）；这边只读。
 repo   = git@github.com:huanshanxiaoyao/ai4all_bridge.git
 path   = tracking/plum_events.yaml
+commit = 9f21a0f9e7365bd41fabde705217fb2c7c66d197
 sha256 = 804533c271d602cc20439c4f4e617fbbbd890d686a37ca49c3e3614f5ea23c3a
 #
-# ⚠️ 上游该文件此刻尚未提交（W0 产物还在工作区），所以只能按内容哈希钉版本。
-# 上游一旦提交，把下面这行换成真实 commit，并复核 sha256 未变。
-commit = (pending upstream commit)
+# 为什么钉 commit 而不是跟着上游 main 走：这份副本决定的是**历史数据怎么解析**。
+# 跟着 main 走意味着上游合一个 PR，这边对三个月前的文件的解释就变了，而且没人会注意到。
+# 升级方式是人工换掉上面两行，并在换之前想清楚存量 ODS 数据要不要重刷。
