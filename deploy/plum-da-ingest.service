@@ -1,0 +1,13 @@
+[Unit]
+Description=Plum 数仓入库（拉取 + 装载）
+After=network-online.target postgresql-16.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=plum_da
+EnvironmentFile=/etc/plum_da.env
+WorkingDirectory=/opt/plum_da
+ExecStart=/opt/plum_da/.venv/bin/python run_ingest.py
+# 单次执行不该跑过一小时；跑超了说明卡住了，杀掉等下一轮比挂着好。
+TimeoutStartSec=3000

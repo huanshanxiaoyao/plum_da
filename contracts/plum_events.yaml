@@ -1,0 +1,398 @@
+# Plum 埋点事件字典 —— 唯一真源。
+#
+# 设计依据：docs/architecture/products/plum/event_tracking/p1_contract_and_skeleton.md
+#
+# 三条硬规则（改这三条等于重刷历史，见 P1 §2.5 / §3.5）：
+#   1. 本文件是唯一可写的真源。后端 events_gen.py、前端 events.gen.ts 都是 codegen 产物，
+#      不得手改；plum_da 侧只持有钉版本的只读副本。
+#   2. 废弃事件不删行，改 status: deprecated。定义的保留期跟随最长的原始数据保留期（S3 冷备），
+#      不跟 DWD 的 90 天 —— 定义删了，冷备就变成不可解析的字节。
+#   3. 加事件 / 加可选属性 / 必填改可选 = 兼容；删事件、删必填属性、改类型、改 enum 已有值
+#      = 破坏性，由 G2 门禁阻断。
+#
+# 改完必须重跑：.venv/bin/python scripts/gen_event_dict.py
+
+version: 1
+
+events:
+  # ===== Feed / 发现（总体设计 §5.1）=====
+
+  - name: feed_served
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 服务端返回一次 feed。只做时延与错误监控，可命中共享缓存，故意不带 request_id、不进漏斗（D16）。
+    # view 是目录接口的 view 参数（app/products/plum/infrastructure/repository/catalog.py 的
+    # FEED_VIEWS），不是客户端的展示面。搜索/标签这类筛选维度由 filter_sig 承载，
+    # 客户端展示面在 feed_impressed.surface 上，两者不共用一套取值。
+    props:
+      server_request_id: { type: uuid, required: true }
+      rank_version: { type: string, required: true }
+      view: { type: enum, required: true, values: [for_you, trending, latest, popular, favorites] }
+      filter_sig: { type: string, required: false }
+      item_count: { type: int, required: true, min: 0 }
+      latency_ms: { type: int, required: true, min: 0 }
+      cache_eligible: { type: bool, required: true }
+
+  - name: feed_impressed
+    since: "1.0"
+    status: active
+    channel: c1
+    source: client
+    description: 一次 feed 渲染内所有达标可见卡片的预聚合曝光。它才是推荐日志的真身；request_id 由客户端渲染时生成。
+    props:
+      request_id: { type: uuid, required: true }
+      rank_version: { type: string, required: true }
+      exp_bucket: { type: string, required: true }
+      surface: { type: enum, required: true, values: [home, for_you, search, tag] }
+      items:
+        type: array
+        required: true
+        max_len: 60
+        item:
+          character_id: { type: string, required: true }
+          position: { type: int, required: true, min: 0 }
+          dwell_ms: { type: int, required: false, min: 0 }
+
+  - name: character_card_clicked
+    since: "1.0"
+    status: active
+    channel: c1
+    source: client
+    description: 用户点开 feed 里的一张角色卡。与同 request_id 的 feed_impressed 组成 CTR 分子。
+    props:
+      request_id: { type: uuid, required: true }
+      character_id: { type: string, required: true }
+      position: { type: int, required: true, min: 0 }
+      surface: { type: enum, required: true, values: [home, for_you, search, tag] }
+
+  - name: character_profile_viewed
+    since: "1.0"
+    status: active
+    channel: c1
+    source: client
+    description: 角色详情页浏览。request_id 可缺失（从分享链接或历史记录直接进入时没有 feed 上下文）。
+    props:
+      character_id: { type: string, required: true }
+      entry_surface: { type: enum, required: true, values: [home, for_you, search, tag, direct, share] }
+      request_id: { type: uuid, required: false }
+      dwell_ms: { type: int, required: false, min: 0 }
+
+  - name: search_submitted
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 一次搜索提交。只落长度与哈希，不落查询原文。
+    props:
+      query_len: { type: int, required: true, min: 0 }
+      query_hash: { type: string, required: true }
+      result_count: { type: int, required: true, min: 0 }
+
+  - name: tag_filtered
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 按标签筛选。
+    props:
+      tag_id: { type: string, required: true }
+      result_count: { type: int, required: true, min: 0 }
+
+  - name: character_liked
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 点赞或取消点赞。action 区分方向，不用两个事件名。
+    props:
+      character_id: { type: string, required: true }
+      action: { type: enum, required: true, values: [add, remove] }
+      entry_surface: { type: enum, required: false, values: [home, for_you, search, tag, direct, share, chat] }
+
+  - name: character_favorited
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 收藏或取消收藏。
+    props:
+      character_id: { type: string, required: true }
+      action: { type: enum, required: true, values: [add, remove] }
+      entry_surface: { type: enum, required: false, values: [home, for_you, search, tag, direct, share, chat] }
+
+  # ===== 聊天室（总体设计 §5.2）=====
+  #
+  # message_generated 刻意不在此列：runtime_turn_runs 与 cost_events 已经在写，
+  # 由每日 ETL 派生进 DWD，不在 turn 热路径上增加写入。
+
+  - name: conversation_started
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 新建会话。request_id 用于串回 feed 曝光。
+    props:
+      conversation_id: { type: string, required: true }
+      character_id: { type: string, required: true }
+      entry_surface: { type: enum, required: true, values: [home, for_you, search, tag, direct, share] }
+      request_id: { type: uuid, required: false }
+      is_guest: { type: bool, required: true }
+
+  - name: conversation_resumed
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 回到一个已存在的会话。
+    props:
+      conversation_id: { type: string, required: true }
+      character_id: { type: string, required: true }
+      seconds_since_last_message: { type: int, required: false, min: 0 }
+
+  - name: conversation_ended
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 会话结束（前端离开或超时判定）。
+    props:
+      conversation_id: { type: string, required: true }
+      turn_count: { type: int, required: true, min: 0 }
+      duration_ms: { type: int, required: true, min: 0 }
+
+  - name: message_sent
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 用户发出一条消息。
+    props:
+      conversation_id: { type: string, required: true }
+      turn_index: { type: int, required: true, min: 0 }
+      char_len: { type: int, required: true, min: 0 }
+      lang: { type: string, required: false }
+      is_regenerate: { type: bool, required: true }
+
+  - name: message_stream_first_painted
+    since: "1.0"
+    status: active
+    channel: c1
+    source: client
+    description: 流式回复首字在客户端渲染出来。这是端到端体感 TTFT，与服务端 first_delta_at 不是同一个量。
+    props:
+      conversation_id: { type: string, required: true }
+      turn_index: { type: int, required: true, min: 0 }
+      first_paint_ms: { type: int, required: true, min: 0 }
+
+  - name: generation_failed
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 生成失败。error_code 复用既有取值，不另起一套。
+    props:
+      conversation_id: { type: string, required: true }
+      turn_index: { type: int, required: true, min: 0 }
+      error_code: { type: string, required: true }
+      provider: { type: string, required: false }
+
+  - name: message_regenerated
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 用户要求重新生成。强负反馈信号。
+    props:
+      conversation_id: { type: string, required: true }
+      turn_index: { type: int, required: true, min: 0 }
+
+  - name: conversation_reset
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 用户清空会话重来。比 regenerate 更强的负反馈。
+    props:
+      conversation_id: { type: string, required: true }
+      turn_count_before: { type: int, required: true, min: 0 }
+
+  - name: moderation_flagged
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 审核链路命中。复用既有审核结果，不重复判定。
+    props:
+      surface: { type: enum, required: true, values: [message, character, profile] }
+      decision: { type: enum, required: true, values: [block, review, pass] }
+      rule_id: { type: string, required: false }
+
+  # ===== 新用户 Journey（总体设计 §5.3，第一期重点）=====
+
+  - name: visitor_first_seen
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 服务端首次为该浏览器签发 visitor_id。没有它，落地到注册之间的全部步骤都断链。entry_path 与 utm_* 描述的是浏览器落地页而非本次 API 请求，只能由客户端经 X-Plum-Landing-Url 头告知；服务端无法自证，拿不到就是 null，绝不用 API 路径顶替。
+    props:
+      entry_path: { type: string, required: false }
+      referrer_host: { type: string, required: false }
+      utm_source: { type: string, required: false }
+      utm_medium: { type: string, required: false }
+      utm_campaign: { type: string, required: false }
+      locale: { type: string, required: false }
+
+  - name: age_gate_shown
+    since: "1.0"
+    status: active
+    channel: c1
+    source: client
+    description: 年龄门弹出。
+    props:
+      trigger: { type: enum, required: true, values: [landing, chat_attempt, profile] }
+
+  - name: age_gate_passed
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 年龄门通过。
+    props:
+      method: { type: enum, required: false, values: [birthdate, confirm] }
+
+  - name: age_gate_rejected
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 年龄门未通过。
+    props:
+      reason: { type: enum, required: true, values: [underage, declined] }
+
+  - name: guest_session_started
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 后端为访客建立游客会话。身份第一次从 visitor_id 接上 platform_user_id。
+    props:
+      trigger_character_id: { type: string, required: true }
+      request_id: { type: uuid, required: false }
+
+  - name: visitor_identified
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: visitor_id 与 platform_user_id 建立关联。这条事件是数仓别名边的业务来源。
+    props:
+      linked_platform_user_id: { type: string, required: true }
+      reason: { type: enum, required: true, values: [guest_created, login, signup] }
+
+  - name: first_message_sent
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 该访客有史以来第一条消息。北极星前置指标。
+    props:
+      character_id: { type: string, required: true }
+      seconds_since_first_seen: { type: int, required: true, min: 0 }
+
+  - name: guest_quota_consumed
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 游客额度扣减一次。remaining 用于定位「聊到第几轮转化率最高」。
+    props:
+      remaining: { type: int, required: true, min: 0 }
+
+  - name: guest_quota_exhausted
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 游客额度耗尽。
+    props:
+      turns_used: { type: int, required: true, min: 0 }
+
+  - name: signup_prompt_shown
+    since: "1.0"
+    status: active
+    channel: c1
+    source: client
+    description: 注册引导曝光。trigger 决定「在哪个触发点转化最好」。
+    props:
+      trigger: { type: enum, required: true, values: [quota_exhausted, favorite, manual, profile] }
+
+  - name: signup_started
+    since: "1.0"
+    status: active
+    channel: c1
+    source: client
+    description: 用户进入注册流程。
+    props:
+      method: { type: enum, required: true, values: [email_otp, google] }
+
+  - name: signup_otp_sent
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 验证码已发出。
+    props:
+      attempt: { type: int, required: false, min: 1 }
+
+  - name: signup_otp_verified
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 验证码校验通过。
+    props:
+      seconds_since_otp_sent: { type: int, required: false, min: 0 }
+
+  - name: signup_failed
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 注册失败。
+    props:
+      method: { type: enum, required: true, values: [email_otp, google] }
+      reason: { type: string, required: true }
+
+  - name: signup_completed
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 注册完成。总体设计 §5.3 里写作 signed_up，按 <对象>_<动作> 命名规范改为 signup_completed。
+    props:
+      method: { type: enum, required: true, values: [email_otp, google] }
+      seconds_since_first_seen: { type: int, required: true, min: 0 }
+      guest_turns_before_signup: { type: int, required: true, min: 0 }
+
+  - name: identity_merged
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 游客身份并入会员身份。这是数仓里唯一允许合并主体的 account_merge 边来源（P4 §5.1）。
+    props:
+      merge_run_id: { type: string, required: true }
+      guest_platform_user_id: { type: string, required: true }
+
+  - name: member_first_message_sent
+    since: "1.0"
+    status: active
+    channel: c1
+    source: server
+    description: 注册后的第一条消息。
+    props:
+      character_id: { type: string, required: true }
+      seconds_since_signup: { type: int, required: true, min: 0 }

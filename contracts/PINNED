@@ -1,0 +1,10 @@
+# 钉住的字典副本来源。改动这里等于改变历史数据的解释口径，必须人工确认。
+#
+# 真源在另一个仓库（单向依赖，见设计文档 D9）；这边只读。
+repo   = git@github.com:huanshanxiaoyao/ai4all_bridge.git
+path   = tracking/plum_events.yaml
+sha256 = 804533c271d602cc20439c4f4e617fbbbd890d686a37ca49c3e3614f5ea23c3a
+#
+# ⚠️ 上游该文件此刻尚未提交（W0 产物还在工作区），所以只能按内容哈希钉版本。
+# 上游一旦提交，把下面这行换成真实 commit，并复核 sha256 未变。
+commit = (pending upstream commit)
