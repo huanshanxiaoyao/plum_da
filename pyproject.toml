@@ -1,0 +1,22 @@
+[project]
+name = "plum_da"
+version = "0.1.0"
+description = "Plum 数据分析平台（机器 B）：拉取事件文件、装载数仓、打分与看板"
+requires-python = ">=3.11"
+dependencies = [
+    "psycopg[binary]==3.2.13",
+    "PyYAML==6.0.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.4", "ruff==0.8.4"]
+
+[tool.setuptools]
+packages = ["contracts", "ingest", "warehouse", "migrations"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

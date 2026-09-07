@@ -1,0 +1,10 @@
+[Unit]
+Description=每小时执行一次 Plum 数仓入库
+
+[Timer]
+# 错开整点：机器 A 在整点封口切片，紧贴着拉会撞上正在写的文件。
+OnCalendar=*-*-* *:12:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
