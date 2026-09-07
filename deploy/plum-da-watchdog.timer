@@ -1,0 +1,10 @@
+[Unit]
+Description=每小时检查一次 Plum 数仓入库是否滞后
+
+[Timer]
+# 避开入库自己的 :12——那时候入库多半正在跑，心跳还没来得及更新。
+OnCalendar=*-*-* *:42:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -23,7 +23,7 @@ from typing import Any, Dict, List
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ingest import db, pull as pull_mod  # noqa: E402
+from ingest import db, heartbeat, pull as pull_mod  # noqa: E402
 from ingest.filespec import iter_sealed_slices  # noqa: E402
 from ingest.load_ods import load_pending  # noqa: E402
 from migrations import apply_migrations  # noqa: E402
@@ -91,8 +91,26 @@ def main(argv: List[str] | None = None) -> int:
     if "prune" in stages and landing.exists():
         report["landing_pruned"] = pull_mod.prune_landing(landing, today)
 
-    print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
     failed = report.get("load", {}).get("failed") if isinstance(report.get("load"), dict) else None
+    pull_rc = (report.get("pull") or {}).get("returncode", 0) if "pull" in stages else 0
+
+    # 心跳只在**整条链路从头到尾都正常**时更新，看门据此判断入库进程是否还活着。
+    # 三个条件缺一不可：
+    #   - 跑的是全流程（`--only` / `--skip-pull` 的调试跑不算，否则一次手工调试
+    #     会把心跳刷新，掩盖掉后面 6 小时里 timer 其实已经挂了）；
+    #   - 没有装载失败；
+    #   - 拉取也成功（凭据过期表现为 rsync 持续非 0 而进程照常跑完，
+    #     不卡这一条的话这种故障要等台账水位 26 小时后才暴露）。
+    # 单次网络抖动导致的漏写是可接受的：看门阈值留了 5 次连续失败的余量。
+    if stages == set(STAGES) and not failed and pull_rc == 0:
+        try:
+            report["heartbeat"] = str(heartbeat.write_success(heartbeat.state_dir(landing), report))
+        except OSError as exc:
+            # 写不了心跳不该让已经成功的装载变成失败退出；但必须留痕，
+            # 否则看门会报「入库停了」而实际上停的只是心跳。
+            logger.warning("写入心跳失败：%s", exc)
+
+    print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
     # 有文件装载失败时以非 0 退出，让 cron 的失败告警能抓到；已成功的部分不回滚。
     return 1 if failed else 0
 

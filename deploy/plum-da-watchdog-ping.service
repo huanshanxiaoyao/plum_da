@@ -1,0 +1,12 @@
+[Unit]
+Description=Plum 数仓存活日报
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=plum_da
+EnvironmentFile=/etc/plum_da.env
+WorkingDirectory=/opt/plum_da
+ExecStart=/opt/plum_da/.venv/bin/python run_watchdog.py --ping
+TimeoutStartSec=120
