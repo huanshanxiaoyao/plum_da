@@ -4,3 +4,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 landing/
+
+# 可编辑安装的构建产物
+*.egg-info/

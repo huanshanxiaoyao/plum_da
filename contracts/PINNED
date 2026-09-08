@@ -3,9 +3,31 @@
 # 真源在另一个仓库（单向依赖，见设计文档 D9）；这边只读。
 repo   = git@github.com:huanshanxiaoyao/ai4all_bridge.git
 path   = tracking/plum_events.yaml
-commit = 9f21a0f9e7365bd41fabde705217fb2c7c66d197
-sha256 = 804533c271d602cc20439c4f4e617fbbbd890d686a37ca49c3e3614f5ea23c3a
+commit = 88452307b6f5f988952b55b8b4f69a6c28e19b28
+sha256 = e9e5dbc5f8f664882c835272281edf03d73f538dffc77e3a7767f8a6861e1cc3
 #
 # 为什么钉 commit 而不是跟着上游 main 走：这份副本决定的是**历史数据怎么解析**。
 # 跟着 main 走意味着上游合一个 PR，这边对三个月前的文件的解释就变了，而且没人会注意到。
 # 升级方式是人工换掉上面两行，并在换之前想清楚存量 ODS 数据要不要重刷。
+#
+# 变更记录
+# 2026-09-08  9f21a0f9 → d8a75e35（digest 7595d34a0d9a8888 → 1f46b17de162c5b4）
+#   内容：conversation_ended 破坏性变更（上游 PR #215，已打 analytics-breaking 标签，
+#         总体设计 §17 有留档）；guest 建号请求新增 trigger_character_id / request_id。
+#   存量 ODS 是否重刷：**不需要**。机器 A 的 PLUM_ANALYTICS_ENABLED 至此仍为 false，
+#   生产没有产生过任何事件，这次是刻意用掉的「零历史窗口」。
+#   注意：机器 A 一旦开始收数，这个窗口即关闭，之后再动字典必须先回答重刷问题。
+#
+# 2026-09-08  d8a75e35 → 88452307（digest 1f46b17de162c5b4 → 750601bfa2bc304f）
+#   内容：visitor_first_seen 的 source 从 server 改成 client（破坏性；上游 PR #219，
+#         已打 analytics-breaking 标签，总体设计 §17 有留档）。铸 visitor_id 的动作搬到
+#         浏览器，服务端只读——服务端铸造把首屏并发当成多个新访客，实测放大约 4 倍。
+#         同时删掉了 X-Plum-Landing-Url 头（归因改由客户端随请求体上报）。
+#   对本仓库的影响：`source` 字段是**读侧口径**，不是入库校验——ingest 不拿字典校验事件，
+#   drift_check 也不看 source。所以这次改动不影响任何现有代码路径，只影响 W4 读数时
+#   「这个事件会不会被 adblock / sendBeacon 丢」这一判断：client 会丢，server 不会，
+#   拿旧口径搭的漏斗分母会**静默高估**。
+#   新访客数的口径同时确定：用 analytics.dim_visitor（migration 006）的
+#   min(server_time) group by visitor_id 推导，**不要**数 visitor_first_seen 的事件条数。
+#   存量 ODS 是否重刷：**不需要**，理由同上——零历史窗口仍然开着。
+#   注意：上游 PR #219 若在合并前被 rebase / amend，88452307 会失效，重钉前需复核。

@@ -142,6 +142,38 @@ ALTER TABLE {SCHEMA}.product_events_dead
 """
 
 
+# 「新访客」的权威口径。**不是** `visitor_first_seen` 的事件计数。
+#
+# 铸 visitor_id 的动作已经搬到浏览器（`plum_chat/lib/analytics/visitor.ts`），这消灭了
+# 服务端时代「首屏几个并发请求各铸一个 id」的竞态。但铸造本身仍可能重复：两个 tab 同时
+# 冷启、cookie 被拦截后每次访问重铸、用户清了浏览器数据。拿事件计数当新访客数，会被这些
+# 重复**直接**污染；拿 `min(server_time) group by visitor_id` 推导则不会——重复铸出来的
+# 是不同的 visitor_id，本来就该算不同的浏览器，而同一个 visitor_id 无论收到几条
+# `visitor_first_seen` 都只贡献一个首见时刻。GA4 / Snowplow 都是这么分的两层。
+#
+# 用视图而不是物化表：ODS 是每天追加的，物化就要跟着调度重算，而重算逻辑写错的代价是
+# 一个**看不出错**的错数字。等真的慢到影响使用再物化（二期），那时也只是加一层缓存。
+#
+# `first_seen` 取 `server_time` 而不是 `event_time_utc`：后者依赖客户端时钟与 skew 修正，
+# 一台时钟设错的设备能把自己的首见推到 1970 年，整个「新访客趋势」被一条记录拖歪。
+# 接收时刻是服务端自己盖的章，无法被客户端影响。
+_M006 = f"""
+CREATE OR REPLACE VIEW {SCHEMA}.dim_visitor AS
+SELECT
+  visitor_id,
+  min(server_time)                        AS first_seen,
+  max(server_time)                        AS last_seen,
+  min(business_day)                       AS first_business_day,
+  count(*)                                AS event_count
+FROM {SCHEMA}.product_events
+WHERE visitor_id IS NOT NULL
+GROUP BY visitor_id;
+
+COMMENT ON VIEW {SCHEMA}.dim_visitor IS
+  '访客维表：新访客数的权威口径。按 min(server_time) 推导首见，不要用 visitor_first_seen 的事件计数。';
+"""
+
+
 # (id, sql)。id 一旦发布不得改动，只能追加。
 MIGRATIONS: List[Tuple[str, str]] = [
     ("001_ods_product_events", _M001),
@@ -149,6 +181,7 @@ MIGRATIONS: List[Tuple[str, str]] = [
     ("003_ods_dead", _M003),
     ("004_ingest_ledger", _M004),
     ("005_widen_skew_and_dead_event_id", _M005),
+    ("006_dim_visitor", _M006),
 ]
 
 _VERSION_TABLE = f"""
