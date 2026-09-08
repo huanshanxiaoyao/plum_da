@@ -22,13 +22,19 @@ events:
     status: active
     channel: c1
     source: server
-    description: 服务端返回一次 feed。只做时延与错误监控，可命中共享缓存，故意不带 request_id、不进漏斗（D16）。
+    description: 服务端返回一次 feed。只做时延与错误监控，故意不带 request_id、不进漏斗（D16）。
+    # cache_eligible 只表示这次响应允许被缓存。W2 起缓存头从 public 收成 private：
+    # 分桶把响应变成因人而异，共享缓存会把 A 的排序发给 B。所以它现在只落在单个浏览器里，
+    # 不再是「多少用户命中同一份缓存」的指标，别拿它算缓存共享率。
     # view 是目录接口的 view 参数（app/products/plum/infrastructure/repository/catalog.py 的
     # FEED_VIEWS），不是客户端的展示面。搜索/标签这类筛选维度由 filter_sig 承载，
     # 客户端展示面在 feed_impressed.surface 上，两者不共用一套取值。
     props:
       server_request_id: { type: uuid, required: true }
       rank_version: { type: string, required: true }
+      # exp_bucket 可选而不是必填：老客户端与非实验 view（explore 只作用于 for_you）都没有桶，
+      # 缺失就是「这次不在实验里」，不是丢数据。
+      exp_bucket: { type: string, required: false }
       view: { type: enum, required: true, values: [for_you, trending, latest, popular, favorites] }
       filter_sig: { type: string, required: false }
       item_count: { type: int, required: true, min: 0 }
@@ -132,11 +138,14 @@ events:
     status: active
     channel: c1
     source: server
-    description: 新建会话。request_id 用于串回 feed 曝光。
+    description: 新建会话（恢复既有会话走 conversation_resumed）。request_id 用于串回 feed 曝光。
+    # entry_surface 与 request_id 都是「客户端才知道」的归因字段，由客户端随 POST /conversations
+    # 的请求体传上来，服务端只做透传。所以两者都可选：老版本客户端不传，缺失即未知来源，
+    # 不是丢数据。事件本身仍是 source: server —— 会话是否真的新建只有服务端知道。
     props:
       conversation_id: { type: string, required: true }
       character_id: { type: string, required: true }
-      entry_surface: { type: enum, required: true, values: [home, for_you, search, tag, direct, share] }
+      entry_surface: { type: enum, required: false, values: [home, for_you, search, tag, direct, share] }
       request_id: { type: uuid, required: false }
       is_guest: { type: bool, required: true }
 
@@ -155,8 +164,12 @@ events:
     since: "1.0"
     status: active
     channel: c1
-    source: server
-    description: 会话结束（前端离开或超时判定）。
+    source: client
+    description: 会话结束：用户离开会话页。由客户端在离开/隐藏时发射。
+    # source 从 server 改成 client 是破坏性变更（G2），趁这条事件从未发射过的零历史窗口一次改掉。
+    # 原因：服务端没有「用户离开了」这个信号 —— 请求结束不等于会话结束，而超时判定要么靠常驻扫描器
+    # 要么靠下一次请求回填，前者是为一条事件多养一个后台任务，后者永远漏掉「离开后再没回来」的会话，
+    # 恰好是最该被记录的那一类。duration_ms 也只有前端量得准。
     props:
       conversation_id: { type: string, required: true }
       turn_count: { type: int, required: true, min: 0 }
@@ -235,8 +248,8 @@ events:
     since: "1.0"
     status: active
     channel: c1
-    source: server
-    description: 服务端首次为该浏览器签发 visitor_id。没有它，落地到注册之间的全部步骤都断链。entry_path 与 utm_* 描述的是浏览器落地页而非本次 API 请求，只能由客户端经 X-Plum-Landing-Url 头告知；服务端无法自证，拿不到就是 null，绝不用 API 路径顶替。
+    source: client
+    description: 浏览器自己铸出 visitor_id 的那一刻。**它是获客归因的载体，不是「新访客数」的口径**——后者由数仓 analytics.dim_visitor 用 min(server_time) group by visitor_id 推导，见 plum_da migrations。两者分开是有意的：客户端铸造消灭了并发首屏各铸一个 id 的竞态，但铸造仍可能重复（两个 tab 同时冷启、cookie 被拦截后每次访问重铸），拿事件计数就会被这些重复直接污染，而拿维表推导不会。entry_path / utm_* / referrer_host 只有落地页所在的浏览器知道：服务端看到的是随后的 API 调用，它的 path 与 referer 与用户实际落地的页面无关，所以这些字段由客户端在落地那一刻抓取并解析后上报。
     props:
       entry_path: { type: string, required: false }
       referrer_host: { type: string, required: false }
@@ -278,8 +291,10 @@ events:
     channel: c1
     source: server
     description: 后端为访客建立游客会话。身份第一次从 visitor_id 接上 platform_user_id。
+    # trigger_character_id 是归因字段：POST /auth/guest/session 本身不带角色，服务端无从得知
+    # 是哪张卡片触发了建号，只能由客户端随请求体传上来。老版本客户端不传，故可选。
     props:
-      trigger_character_id: { type: string, required: true }
+      trigger_character_id: { type: string, required: false }
       request_id: { type: uuid, required: false }
 
   - name: visitor_identified
@@ -294,10 +309,15 @@ events:
 
   - name: first_message_sent
     since: "1.0"
-    status: active
+    status: deprecated
     channel: c1
     source: server
-    description: 该访客有史以来第一条消息。北极星前置指标。
+    description: 【已废弃，改由数仓推导】该访客有史以来第一条消息。北极星前置指标。
+    # 不再由服务端发射：判定「有史以来第一条」要在每条消息的热路径上多做一次全历史查询，
+    # 代价与价值不成比例，而且服务端算错了就永久错。数仓口径：对 message_sent 按主体
+    # （visitor 或其别名合并后的 platform_user_id）取 min(event_time_utc) 即首条消息；
+    # seconds_since_first_seen = 该时刻 - 同一主体最早一条事件的 event_time_utc。
+    # 定义按硬规则 2 保留不删，历史数据仍能解析。
     props:
       character_id: { type: string, required: true }
       seconds_since_first_seen: { type: int, required: true, min: 0 }
@@ -389,10 +409,13 @@ events:
 
   - name: member_first_message_sent
     since: "1.0"
-    status: active
+    status: deprecated
     channel: c1
     source: server
-    description: 注册后的第一条消息。
+    description: 【已废弃，改由数仓推导】注册后的第一条消息。
+    # 同 first_message_sent。数仓口径：取 visitor_identified(reason=signup) 的时刻作为注册时间，
+    # 该 platform_user_id 之后第一条 message_sent 即本事件；
+    # seconds_since_signup = 两者 event_time_utc 之差。
     props:
       character_id: { type: string, required: true }
       seconds_since_signup: { type: int, required: true, min: 0 }
