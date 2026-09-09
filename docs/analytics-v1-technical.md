@@ -1,5 +1,10 @@
 # Analytics V1 technical plan
 
+2026-09-09: migration 007, persistent models, report and Watchdog are deployed;
+the core business data flow passed production acceptance. See the
+[acceptance record](analytics-v1-acceptance.md) for evidence and four pending
+operational checks. This plan describes implementation, not an instruction to redeploy.
+
 ## Boundaries
 
 All warehouse/report changes live in plum_da. The only application change is a
@@ -51,14 +56,23 @@ dedicated aggregate views, and deployment grants the report reader access only t
 those views. nginx protects the complete artifact with basic auth over TLS. Reuse
 the existing deployment boundary; do not publish the dashboard to a third party.
 
+The deployed beta uses an IP TLS/basic-auth `/plum-report` location, with the host
+root reserved for sub2api. A dedicated subdomain remains a template option, not the
+current deployment. Host addresses and credentials stay in controlled operations
+records. B uses `/opt/workspace/plum_da`; unit templates' `/opt/plum_da` paths were
+adapted during deployment. Coverage is fixed at 2026-09-09 UTC and attribution at
+604800 seconds; documentation closeout must not reactivate or reset the model.
+
 ## Verification and rollback
 
-See analytics-v1-acceptance.md. Use an isolated local PostgreSQL 16 instance.
+See [analytics-v1-acceptance.md](analytics-v1-acceptance.md). For future code tests,
+use an isolated local PostgreSQL 16 instance.
 Test duplicate IDs across files, repeated exposure keys, late/missing exposure,
 cross-day attribution, conflicting dimensions, empty data, raw expiry, rollback and
 static export privacy. UI checks cover desktop/mobile, dates, sorting and empty
-results. Watchdog verification uses local fake responses; real notification delivery
-is not claimed by local tests.
+results. Local Watchdog tests use fake responses. Production delivery is separately
+supported by user-confirmed receipt of a controlled ping and isolated missing-heartbeat
+alert; the first natural daily ping and long-term stale drill remain pending.
 
 Rollback disables the new report timer and restores the previous HTML artifact.
 Keep migration 007 and persistent tables: deleting them loses visitor history.

@@ -1,7 +1,8 @@
 # Analytics V1 requirements
 
-Date: 2026-09-09. Status: implemented and locally verified; deployment acceptance
-remains pending. Evidence: analytics-v1-acceptance.md.
+Date: 2026-09-09. Status: phase-1 core business data flow accepted in production;
+four operational checks remain pending. Evidence and exact scope:
+[acceptance record](analytics-v1-acceptance.md).
 
 Scope correction from the user, 2026-09-09: this is a new product in internal beta.
 Do not build historical-user migration, historical backfill or legacy compatibility.
@@ -14,10 +15,12 @@ retention. First seen means first observed within this explicitly displayed scop
 Give Plum operators a read-only daily view of visitors, qualified feed impressions,
 clicks, CTR and character performance. The browser -> A files -> B PostgreSQL
 pipeline is already deployed and accepted according to the deployment handoff.
-Watchdog code and unit templates exist; production notification acceptance is pending.
+The persistent models, dashboard and Watchdog are deployed; controlled notification
+receipt and real browser attribution are confirmed. Natural daily scheduling and
+long-term stale/recovery acceptance remain open.
 Do not equate a merged commit with a production deployment.
 
-This iteration builds on plum_chat bfd5fee, ai4all_bridge 074d5636 and plum_da
+The original development baseline was plum_chat bfd5fee, ai4all_bridge 074d5636 and plum_da
 70cd582. Existing collection and file transport contracts remain the source contracts.
 The implemented 30-day ODS retention and file-key ledger supersede the old P4 draft
 examples of 14-day retention and hash-keyed ledger states.
@@ -35,8 +38,8 @@ examples of 14-day retention and hash-keyed ledger states.
   one impression contribute at most one numerator. Unmatched clicks are separate.
 - Attribution window: **7 days (604800 seconds)**, confirmed by the user on
   2026-09-09 for internal beta; this is the report command's default.
-- The user waived local browser-to-A-to-B integration for this release. Keep the
-  completed automated tests; perform real browser acceptance after online deployment.
+- The user waived local browser-to-A-to-B integration for this release. Automated
+  tests and the subsequent real browser production acceptance are recorded separately.
 - Generate a daily static, authenticated dashboard, following existing D10. Include
   date filters, daily browser visitors/new visitors, impressions/clicks/CTR, character
   performance, data freshness and processing/coverage status. No person-level data
@@ -44,7 +47,8 @@ examples of 14-day retention and hash-keyed ledger states.
 - Emit character_profile_viewed only once a character page actually loads, with
   available feed entry context. Failed/blocked character loads must not count.
 - Provide local tests and deployment/rollback instructions for reporting and
-  Watchdog. Production installation and real notifications remain deployment work.
+  Watchdog. Production installation and controlled notification receipt are now
+  confirmed; the remaining operational checks are tracked in the acceptance record.
 
 ## Acceptance
 

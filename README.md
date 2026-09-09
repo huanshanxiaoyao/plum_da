@@ -44,7 +44,10 @@ C2（删除/身份合并指令，可靠投递）是 W3.5，删除功能开放前
 | `run_ingest.py` | 入口：迁移 → 建分区 → 拉取 → 装载 → 清理 |
 
 内测看板的需求、技术与验证记录见 [Analytics V1](docs/analytics-v1-requirements.md)，
-新增部署步骤见 [部署与回滚](deploy/analytics-v1.md)。不补历史用户或数据。
+部署参考见 [部署与回滚](deploy/analytics-v1.md)。不补历史用户或数据。
+2026-09-09 机器 B 汇报及用户确认：**一期核心业务数据链路验收通过**，持久化模型、
+只读看板和 Watchdog 已部署，受控通知已送达。首次自然日报/报表调度、真实桌面/手机
+看板检查和 26 小时 stale 恢复演练仍待验收，详见 [验收记录](docs/analytics-v1-acceptance.md)。
 离线演示不连接数据库：
 
 ```bash
