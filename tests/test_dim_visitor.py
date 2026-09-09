@@ -16,6 +16,7 @@ import pytest
 
 from migrations import SCHEMA, apply_migrations
 from warehouse.partitions import ensure_partitions
+from warehouse.project import project
 
 DSN = os.environ.get("PLUM_DA_TEST_DSN", "").strip()
 pytestmark = pytest.mark.skipif(not DSN, reason="需要 PLUM_DA_TEST_DSN 指向可写的测试库")
@@ -32,6 +33,7 @@ def conn():
     with connection.cursor() as cur:
         cur.execute(f"DROP SCHEMA IF EXISTS {SCHEMA} CASCADE")
     connection.commit()
+
     apply_migrations(connection)
     ensure_partitions(connection, _DAY)
     yield connection
@@ -60,7 +62,12 @@ def _insert(connection, *rows) -> None:
                     visitor_id,
                 ),
             )
+        cur.execute("""INSERT INTO analytics.ingest_ledger
+            (file_key, lane, business_day, writer_id, slice_index, sha256, line_count, rows_loaded)
+            VALUES ('test', 'data', %s, 'test', 0, 'test', %s, %s)""",
+            (_DAY, len(rows), len(rows)))
     connection.commit()
+    project(connection, 7 * 86400, start_day=_DAY)
 
 
 def _dim(connection) -> dict:

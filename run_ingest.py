@@ -82,9 +82,16 @@ def main(argv: List[str] | None = None) -> int:
                 report["migrations_applied"] = apply_migrations(conn)
             if "partitions" in stages:
                 report["partitions_ensured"] = len(partitions_mod.ensure_partitions(conn, today))
-                report["partitions_dropped"] = partitions_mod.drop_expired_partitions(conn, today)
             if "load" in stages:
                 report["load"] = load_pending(conn, slices)
+            if "partitions" in stages:
+                try:
+                    report["partitions_dropped"] = partitions_mod.drop_expired_partitions(conn, today)
+                except RuntimeError as exc:
+                    # A delayed model blocks deletion, but must not block new raw ingestion.
+                    conn.rollback()
+                    report["retention_error"] = str(exc)
+                    logger.error("retention postponed: %s", exc)
         finally:
             conn.close()
 
@@ -102,7 +109,7 @@ def main(argv: List[str] | None = None) -> int:
     #   - 拉取也成功（凭据过期表现为 rsync 持续非 0 而进程照常跑完，
     #     不卡这一条的话这种故障要等台账水位 26 小时后才暴露）。
     # 单次网络抖动导致的漏写是可接受的：看门阈值留了 5 次连续失败的余量。
-    if stages == set(STAGES) and not failed and pull_rc == 0:
+    if stages == set(STAGES) and not failed and pull_rc == 0 and not report.get("retention_error"):
         try:
             report["heartbeat"] = str(heartbeat.write_success(heartbeat.state_dir(landing), report))
         except OSError as exc:
@@ -113,7 +120,7 @@ def main(argv: List[str] | None = None) -> int:
     print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
     # 有文件装载失败时以非 0 退出，让 cron 的失败告警能抓到；已成功的部分不回滚。
     pull_failed = report.get("pull", {}).get("returncode", 0) != 0
-    return 1 if failed or pull_failed else 0
+    return 1 if failed or pull_failed or report.get("retention_error") else 0
 
 
 if __name__ == "__main__":

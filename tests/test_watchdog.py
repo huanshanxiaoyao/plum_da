@@ -163,12 +163,22 @@ def test_业务码为零算送达():
     assert run_watchdog._alert_response_ok(b'{"code":0,"msg":"success"}') is True
 
 
-def test_读不懂的响应体按送达处理():
-    """判错成「没送达」只会重发一条重复告警；判错成「送达」会吞掉真实告警。
+def test_unknown_response_does_not_confirm_delivery():
+    for body in [b"<html>502</html>", b"[]", b'{"msg":"ok"}', b'{"code":true}']:
+        assert run_watchdog._alert_response_ok(body) is False
+    assert run_watchdog._alert_response_ok(b'{"StatusCode":0}') is True
 
-    所以未知形态一律放行——只有**明确读到非零 code** 才判失败。
-    """
 
-    assert run_watchdog._alert_response_ok(b"<html>502</html>") is True
-    assert run_watchdog._alert_response_ok(b"[]") is True
-    assert run_watchdog._alert_response_ok(b'{"msg":"ok"}') is True
+def test_failed_health_ping_returns_nonzero(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    now = datetime.now(timezone.utc)
+    monkeypatch.setattr(run_watchdog.db, "connect", lambda: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(run_watchdog, "read_ledger_watermark", lambda conn: now)
+    monkeypatch.setattr(run_watchdog.heartbeat, "finished_at", lambda value: now)
+    monkeypatch.setattr(run_watchdog, "send", lambda *args: False)
+    monkeypatch.setenv(run_watchdog.WEBHOOK_ENV, "https://example.invalid/test")
+    assert run_watchdog.main(["--ping", "--landing", str(tmp_path)]) == 1
+    monkeypatch.setattr(run_watchdog, "send", lambda *args: True)
+    assert run_watchdog.main(["--ping", "--landing", str(tmp_path)]) == 0
+    monkeypatch.delenv(run_watchdog.WEBHOOK_ENV)
+    assert run_watchdog.main(["--ping", "--landing", str(tmp_path)]) == 1

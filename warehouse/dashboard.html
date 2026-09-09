@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="data:,">
+<title>Plum Analytics</title>
+<style>
+:root{color-scheme:light;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#202626;background:#f6f8f7;letter-spacing:0}
+*{box-sizing:border-box}body{margin:0}header{background:#fff;border-bottom:1px solid #dce3df;padding:22px 32px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}h1{font-size:24px;margin:0;font-weight:650}h1 span{color:#65716c;font-size:16px;font-weight:450;margin-left:12px}main{max-width:1400px;margin:auto;padding:24px 32px 40px}h2{font-size:18px;margin:0}p{line-height:1.6}button,input,select{font:inherit;border:1px solid #aab8b0;background:#fff;border-radius:4px;min-height:40px;padding:8px 10px;color:inherit}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}input,select{max-width:100%;min-width:0}button:hover:not(:disabled){background:#eef4f0}:focus-visible{outline:3px solid #087f5b;outline-offset:3px}label{font-size:13px;color:#53615a;display:flex;flex-direction:column;gap:6px}.filters{display:flex;gap:12px;align-items:end;flex-wrap:wrap}.status{font-size:13px;color:#4a5951}.warning{background:#fff1d7;border-left:3px solid #ac7412;padding:10px 14px;margin:16px 0;color:#714800}.warning[hidden]{display:none}.subtle{font-size:13px;color:#65716c}.freshness{display:flex;gap:10px 24px;flex-wrap:wrap;margin:16px 0}.metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border-top:1px solid #dce3df;border-bottom:1px solid #dce3df;margin-top:24px;background:#fff}.metric{padding:20px 12px;border-right:1px solid #e4e9e6;min-width:0}.metric:last-child{border:0}.metric dt{font-size:13px;color:#53615a}.metric dd{font-size:26px;font-weight:650;margin:10px 0 0;overflow-wrap:anywhere}.section{padding:24px 0;border-bottom:1px solid #dce3df}.section-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}.chart-wrap{height:240px;position:relative}canvas{display:block;width:100%;height:100%}.legend{display:flex;gap:20px;font-size:13px;margin:12px 0}.legend span::before{content:"";display:inline-block;width:10px;height:10px;background:#087f5b;margin-right:7px}.legend span+span::before{background:#cc684f}.table-scroll{overflow:auto;max-height:480px;border-top:1px solid #dce3df}table{border-collapse:collapse;width:100%;font-size:13px;text-align:right;white-space:nowrap}th,td{padding:13px 12px;border-bottom:1px solid #e5eae7}th{background:#edf2ef;position:sticky;top:0;font-weight:550}th:first-child,td:first-child{text-align:left}td:first-child{max-width:250px;white-space:normal;overflow-wrap:anywhere}tbody tr:hover{background:#eef4f0}.empty{text-align:center;color:#65716c;padding:32px}.pagination{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-top:16px}footer{margin-top:20px;color:#65716c;font-size:12px;line-height:1.8}noscript{display:block;padding:24px;color:#a23030}
+@media(max-width:900px){.metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.metric:nth-child(3){border-right:0}.metric:nth-child(-n+3){border-bottom:1px solid #e4e9e6}}
+@media(max-width:520px){header{padding:18px 16px}main{padding:20px 16px}h1{font-size:22px}h1 span{display:block;margin:4px 0 0;font-size:14px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metric{padding:16px 10px}.metric dd{font-size:23px}.metric:nth-child(3){border-right:1px solid #e4e9e6}.metric:nth-child(even){border-right:0}.metric:nth-child(-n+4){border-bottom:1px solid #e4e9e6}.filters label{flex:1;min-width:140px}.filters button{width:100%}.chart-wrap{height:210px}.section-head label{width:100%}}
+</style>
+</head>
+<body>
+<header><h1>Plum <span>产品数据</span></h1><div class="status" id="status" role="status">正在读取快照</div></header>
+<noscript>需要启用 JavaScript 才能查看数据。</noscript>
+<main>
+<form class="filters" id="filters"><label>开始日期 · UTC<input id="start" type="date" required></label><label>结束日期 · UTC<input id="end" type="date" required></label><button type="submit">应用日期</button><button type="button" id="recent">最近 7 天</button></form>
+<div class="warning" id="warning" role="status" hidden></div>
+<div class="freshness subtle" id="freshness"></div>
+<dl class="metrics" id="metrics" aria-live="polite"></dl>
+<section class="section" aria-labelledby="trend-title"><div class="section-head"><h2 id="trend-title">访客趋势</h2><span class="subtle">全站浏览器标识数 · 按日统计</span></div>
+<div class="legend"><span>日访客</span><span>新访客</span></div><div class="chart-wrap"><canvas id="trend" role="img" aria-label="所选日期的日访客与新访客趋势，精确数值见下方每日数据表"></canvas></div>
+</section>
+<section class="section" aria-labelledby="characters-title"><div class="section-head"><h2 id="characters-title">角色表现</h2><label>排序<select id="sort"><option value="impressions">曝光量</option><option value="ctr">CTR</option><option value="clicked_impressions">被点击曝光量</option></select></label></div>
+<div class="table-scroll" tabindex="0" role="region" aria-label="角色表现表，可横向滚动"><table><thead><tr><th scope="col">角色 ID</th><th scope="col">入口</th><th scope="col">实验组</th><th scope="col">排序版本</th><th scope="col">曝光</th><th scope="col">被点击曝光</th><th scope="col">CTR</th></tr></thead><tbody id="characters"></tbody></table></div>
+<div class="pagination"><span class="subtle" id="pages"></span><button id="prev" type="button">上一页</button><button id="next" type="button">下一页</button></div></section>
+<section class="section" aria-labelledby="daily-title"><div class="section-head"><h2 id="daily-title">每日数据</h2><span class="subtle">已采集数据 · 当前日尚未结束</span></div><div class="table-scroll" tabindex="0" role="region" aria-label="每日数据表，可横向滚动"><table><thead><tr><th scope="col">日期 · UTC</th><th scope="col">访客</th><th scope="col">新访客</th><th scope="col">详情浏览</th><th scope="col">曝光</th><th scope="col">点击事件</th><th scope="col">未归因点击</th><th scope="col">CTR</th></tr></thead><tbody id="daily"></tbody></table></div></section>
+<footer id="definitions"></footer>
+</main>
+<script id="report-data" type="application/json">__REPORT_DATA__</script>
+<script>
+"use strict";
+const data = JSON.parse(document.getElementById("report-data").textContent);
+const $ = id => document.getElementById(id);
+const count = n => new Intl.NumberFormat("zh-CN", {maximumFractionDigits:1}).format(n);
+const ratio = (a,b) => b ? `${(100*a/b).toFixed(2)}%` : "--";
+const dayOf = value => new Date(value).toISOString().slice(0,10);
+const today = dayOf(new Date());
+const dayMs = 86400000;
+const time = value => value ? new Date(value).toISOString().replace("T"," ").slice(0,19)+" UTC" : "暂无";
+let page = 0, result = null;
+function summarize(start, end) {
+  const days = new Map();
+  for(let ms=Date.parse(start);ms<=Date.parse(end);ms+=dayMs){
+    const day=dayOf(ms); days.set(day,{day,visitors:0,new_visitors:0,profile_views:0,impressions:0,clicked_impressions:0,clicks:0,unmatched_clicks:0});
+  }
+  const characters = new Map();
+  for(const row of data.visitors){const day=days.get(row.business_day);if(day) for(const key of ["visitors","new_visitors","profile_views"]) day[key]+=row[key];}
+  for(const row of data.feed){const day=days.get(row.business_day);if(!day)continue;
+    day.impressions+=row.impressions;day.clicked_impressions+=row.clicked_impressions;
+    const key=JSON.stringify([row.character_id,row.surface,row.exp_bucket,row.rank_version]);
+    const target=characters.get(key)||{...row,impressions:0,clicked_impressions:0};
+    target.impressions+=row.impressions;target.clicked_impressions+=row.clicked_impressions;characters.set(key,target);
+  }
+  for(const row of data.clicks){const day=days.get(row.business_day);if(day){day.clicks+=row.clicks;day.unmatched_clicks+=row.unmatched_clicks;}}
+  const daily=[...days.values()];
+  const totals=daily.reduce((sum,row)=>{for(const key of Object.keys(sum))sum[key]+=row[key];return sum;},
+    {visitors:0,new_visitors:0,profile_views:0,impressions:0,clicked_impressions:0,clicks:0,unmatched_clicks:0});
+  return {daily,totals,characters:[...characters.values()]};
+}
+function cellRow(values){const tr=document.createElement("tr");for(const value of values){const td=document.createElement("td");td.textContent=value;tr.append(td);}return tr;}
+function emptyRow(columns, text){const tr=cellRow([text]);tr.firstChild.colSpan=columns;tr.firstChild.className="empty";return tr;}
+function renderCharacters(){
+  const mode=$("sort").value;
+  const items=[...result.characters].sort((a,b)=>{
+    const value=x=>mode==="ctr"?x.clicked_impressions/x.impressions:x[mode];
+    return value(b)-value(a)||a.character_id.localeCompare(b.character_id);
+  });
+  const max=Math.max(1,Math.ceil(items.length/25)); page=Math.min(page,max-1);
+  $("characters").replaceChildren(...items.slice(page*25,(page+1)*25).map(r=>cellRow([
+    r.character_id,r.surface,r.exp_bucket,r.rank_version,count(r.impressions),count(r.clicked_impressions),ratio(r.clicked_impressions,r.impressions)])));
+  if(!items.length)$("characters").append(emptyRow(7,"所选日期暂无已采集曝光"));
+  $("pages").textContent=`${items.length} 条 · ${page+1} / ${max}`;
+  $("prev").disabled=page===0;$("next").disabled=page>=max-1;
+}
+function draw(){
+  if(!result)return;
+  const canvas=$("trend"),box=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+  canvas.width=Math.round(box.width*dpr);canvas.height=Math.round(box.height*dpr);
+  const ctx=canvas.getContext("2d");ctx.scale(dpr,dpr);
+  const w=box.width,h=box.height,pad=40,rows=result.daily,peak=Math.max(1,...rows.flatMap(r=>[r.visitors,r.new_visitors]));
+  ctx.font="11px system-ui";ctx.lineWidth=1;
+  for(let i=0;i<4;i++){const y=14+(h-pad-14)*i/3;ctx.strokeStyle="#dce3df";ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(w-12,y);ctx.stroke();ctx.fillStyle="#65716c";ctx.fillText(count(peak*(1-i/3)),0,y+4);}
+  const x=i=>pad+(w-pad-12)*(rows.length===1?.5:i/(rows.length-1));
+  for(const [key,color] of [["visitors","#087f5b"],["new_visitors","#cc684f"]]){
+    ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=2;ctx.beginPath();
+    rows.forEach((r,i)=>{const y=h-pad-(h-pad-14)*r[key]/peak;i?ctx.lineTo(x(i),y):ctx.moveTo(x(i),y);});ctx.stroke();
+    rows.forEach((r,i)=>{ctx.beginPath();ctx.arc(x(i),h-pad-(h-pad-14)*r[key]/peak,2.5,0,Math.PI*2);ctx.fill();});
+  }
+  ctx.fillStyle="#65716c";ctx.textAlign="left";ctx.fillText(rows[0].day.slice(5),pad,h-10);
+  ctx.textAlign="right";ctx.fillText(rows.at(-1).day.slice(5),w-12,h-10);
+}
+function render(){
+  const start=$("start").value,end=$("end").value;
+  $("end").setCustomValidity(start>end?"结束日期不能早于开始日期":"");
+  if(!$("filters").reportValidity())return;
+  if((Date.parse(end)-Date.parse(start))/dayMs>366){$("end").setCustomValidity("每次最多查看 367 天");$("end").reportValidity();return;}
+  result=summarize(start,end);page=0;
+  const t=result.totals;
+  const values=[["日均访客 · 全站",count(t.visitors/result.daily.length)],["新访客 · 全站",count(t.new_visitors)],["曝光 · 全入口",count(t.impressions)],
+    ["点击事件 · 全入口",count(t.clicks)],["CTR · 全入口",ratio(t.clicked_impressions,t.impressions)],["未归因点击",count(t.unmatched_clicks)]];
+  $("metrics").replaceChildren(...values.map(([label,value])=>{const div=document.createElement("div");div.className="metric";const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=label;dd.textContent=value;div.append(dt,dd);return div;}));
+  $("daily").replaceChildren(...result.daily.map(r=>cellRow([r.day,count(r.visitors),count(r.new_visitors),count(r.profile_views),count(r.impressions),count(r.clicks),count(r.unmatched_clicks),ratio(r.clicked_impressions,r.impressions)])));
+  renderCharacters();draw();
+}
+function freshness(){
+  const s=data.status,now=Date.now(),warnings=[];
+  if(data.demo)warnings.push("演示数据，不代表线上使用情况。");
+  if(!s.event_watermark)warnings.push("暂无已采集事件。请结合采集链路状态判断是否有流量。");
+  if(!s.ingest_watermark||now-Date.parse(s.ingest_watermark)>26*3600000)warnings.push("入库水位已超过 26 小时或尚不可用。");
+  if(now-Date.parse(s.refreshed_at)>26*3600000)warnings.push("统计快照已超过 26 小时，当前显示上次成功结果。");
+  $("warning").hidden=!warnings.length;$("warning").textContent=warnings.join(" ");
+  $("status").textContent=data.demo?"演示快照":warnings.length?"数据状态待检查":"每日快照 · 已生成";
+}
+const coverage=data.status.coverage_start||today;
+for(const id of ["start","end"]){$(id).min=coverage;$(id).max=dayOf(data.generated_at);}
+function recent(){const end=dayOf(data.generated_at);$("end").value=end;$("start").value=[coverage,dayOf(Date.parse(end)-6*dayMs)].sort().at(-1);render();}
+$("filters").addEventListener("input",()=>$("end").setCustomValidity(""));
+$("filters").addEventListener("submit",event=>{event.preventDefault();render();});
+$("recent").addEventListener("click",recent);$("sort").addEventListener("change",()=>{page=0;renderCharacters();});
+$("prev").addEventListener("click",()=>{page--;renderCharacters();});$("next").addEventListener("click",()=>{page++;renderCharacters();});
+$("freshness").textContent=`统计更新：${time(data.status.refreshed_at)}　 入库更新：${time(data.status.ingest_watermark)}　 最近事件：${time(data.status.event_watermark)}`;
+$("definitions").textContent=`统计起点：${coverage} UTC。访客按浏览器标识统计，不等同于人数；日均访客不是区间去重访客。CTR = 被点击曝光 / 合格曝光，同一曝光最多计一次点击；归因窗口 ${count(data.status.attribution_seconds/86400)} 天。曝光按曝光日统计，点击事件按点击日统计。未归因点击可能尚未收到对应曝光。角色表现按入口、实验组和排序版本分开统计。零值仅表示暂无已采集记录；当前日及归因窗口内的数据可能继续更新。`;
+window.addEventListener("resize",draw);freshness();setInterval(freshness,60000);recent();
+</script>
+</body>
+</html>

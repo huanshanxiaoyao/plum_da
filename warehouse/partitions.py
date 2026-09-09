@@ -16,6 +16,7 @@ from datetime import date, timedelta
 from typing import Any, List
 
 from migrations import SCHEMA
+from warehouse.project import LOCK_ID
 
 logger = logging.getLogger("plum_da.partitions")
 
@@ -61,8 +62,8 @@ def ensure_partitions(
         # 分区边界属于 DDL 语法，PG 不接受参数绑定（`could not determine data type
         # of parameter`），只能内联字面量。这里的值全部来自内部构造的 `date`，
         # 经 isoformat 后必然是 YYYY-MM-DD，不存在外部输入路径。
-        lower = day.isoformat()
-        upper = (day + timedelta(days=1)).isoformat()
+        lower = day.isoformat() + " 00:00:00+00"
+        upper = (day + timedelta(days=1)).isoformat() + " 00:00:00+00"
         with conn.cursor() as cur:
             cur.execute(
                 f"CREATE TABLE IF NOT EXISTS {SCHEMA}.{name} "
@@ -86,6 +87,7 @@ def drop_expired_partitions(
     cutoff = today - timedelta(days=retention_days)
     dropped: List[str] = []
     with conn.cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_ID,))
         cur.execute(
             """
             SELECT c.relname
@@ -111,6 +113,19 @@ def drop_expired_partitions(
         if day >= cutoff:
             continue
         with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT e.source_file FROM {SCHEMA}.{name} e
+                LEFT JOIN {SCHEMA}.projected_files p ON p.file_key = e.source_file
+                LEFT JOIN {SCHEMA}.ingest_ledger l ON l.file_key = e.source_file
+                WHERE (p.file_key IS NULL OR l.file_key IS NULL
+                   OR p.sha256 <> l.sha256 OR p.rows_loaded <> l.rows_loaded)
+                  AND (l.business_day IS NULL OR l.business_day >= coalesce(
+                    (SELECT start_day FROM analytics.projection_settings), '-infinity'::date))
+                LIMIT 1
+            """)
+            if cur.fetchone():
+                conn.rollback()
+                raise RuntimeError(f"refusing to expire unprojected source data in {name}")
             cur.execute(f"DROP TABLE IF EXISTS {SCHEMA}.{name}")
         dropped.append(name)
         logger.info("dropped expired partition %s", name)

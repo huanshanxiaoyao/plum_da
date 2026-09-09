@@ -37,7 +37,19 @@ C2（删除/身份合并指令，可靠投递）是 W3.5，删除功能开放前
 | `ingest/ledger.py` | 文件台账：这个文件装过没有 |
 | `migrations/` | 本仓**自己的**迁移链，与业务仓全局单链无关 |
 | `warehouse/partitions.py` | ODS 按天分区：提前建、过期删 |
+| `warehouse/project.py` | 内测启用日起的访客历史、曝光/点击去重事实 |
+| `warehouse/refresh.sql` | 日访客、曝光、被点击曝光与未归因点击汇总 |
+| `warehouse/report.py` | 仅读聚合视图，原子生成独立 HTML |
+| `run_report.py` | 每日模型刷新与静态只读看板入口 |
 | `run_ingest.py` | 入口：迁移 → 建分区 → 拉取 → 装载 → 清理 |
+
+内测看板的需求、技术与验证记录见 [Analytics V1](docs/analytics-v1-requirements.md)，
+新增部署步骤见 [部署与回滚](deploy/analytics-v1.md)。不补历史用户或数据。
+离线演示不连接数据库：
+
+```bash
+.venv/bin/python run_report.py --demo --output /tmp/plum-analytics-preview/index.html
+```
 
 ## 表设计的两条硬约束
 

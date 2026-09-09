@@ -1,0 +1,16 @@
+# Include in a dedicated HTTPS server block with the site's real certificate.
+# Configure port 80 to redirect to HTTPS. Never expose this location over HTTP.
+root /srv/plum_report;
+index index.html;
+auth_basic "Plum analytics";
+auth_basic_user_file /etc/nginx/plum-report.htpasswd;
+add_header Cache-Control "no-store" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "DENY" always;
+add_header Content-Security-Policy "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" always;
+location / {
+    try_files $uri $uri/ =404;
+}
+location ~ /\. {
+    deny all;
+}

@@ -87,6 +87,12 @@ def load_slice(conn: Any, slice_file: SliceFile, *, verify_sha: bool = True) -> 
     columns = DEAD_COLUMNS if slice_file.lane == LANE_DEAD else EVENT_COLUMNS
 
     with conn.cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (5852007,))
+        cur.execute(f"SELECT sha256 FROM {SCHEMA}.projected_files WHERE file_key = %s",
+                    (slice_file.key,))
+        projected = cur.fetchone()
+        if projected and projected[0] != manifest.sha256:
+            raise IntegrityError(f"{slice_file.key}: cannot replace an already projected source")
         # 重放路径：先按 source_file 清掉旧行。正常首装这里删 0 行。
         cur.execute(f"DELETE FROM {SCHEMA}.{table} WHERE source_file = %s", (slice_file.key,))
         if rows:

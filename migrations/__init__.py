@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any, List, Tuple
 
 logger = logging.getLogger("plum_da.migrations")
@@ -182,6 +183,7 @@ MIGRATIONS: List[Tuple[str, str]] = [
     ("004_ingest_ledger", _M004),
     ("005_widen_skew_and_dead_event_id", _M005),
     ("006_dim_visitor", _M006),
+    ("007_persistent_analytics", Path(__file__).with_name("007_analytics.sql").read_text()),
 ]
 
 _VERSION_TABLE = f"""

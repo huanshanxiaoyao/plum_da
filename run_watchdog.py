@@ -279,23 +279,18 @@ _MAX_ALERT_RESPONSE_BYTES = 4096
 
 
 def _alert_response_ok(body: bytes) -> bool:
-    """判飞书响应体里的业务码。**读不懂时按送达处理。**
-
-    这个方向是刻意的：判错成「没送达」只会让下一轮重发一条重复告警，判错成「送达」
-    却会吞掉一次真实告警。但响应体格式变化 / 非 JSON 不该让每轮都重复轰炸群，
-    所以只在**明确读到非零 code** 时才判失败，其余一律放行并留日志。
-    """
+    """只有明确的成功业务码才记送达，代理错误页不能启动通知冷却期。"""
 
     try:
         parsed = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, ValueError):
-        logger.warning("告警响应体不是 JSON，按送达处理")
-        return True
+        logger.warning("告警响应体不是 JSON，未确认送达")
+        return False
     if not isinstance(parsed, dict):
-        return True
-    code = parsed.get("code", parsed.get("StatusCode", 0))
+        return False
+    code = parsed.get("code", parsed.get("StatusCode"))
     if isinstance(code, bool) or not isinstance(code, int):
-        return True
+        return False
     if code != 0:
         # msg 是飞书自己的错误描述，不含我们的告警正文，可以安全落日志。
         logger.error("告警被拒绝：code=%s msg=%s", code, parsed.get("msg"))
@@ -359,9 +354,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not webhook:
         # 没配 webhook 时不静默通过：有异常就以非 0 退出，至少 systemd 会记一笔失败。
         # 「装了看门但没配告警地址」和「没装看门」在效果上一样，必须让它可见。
-        if alerts:
+        if alerts or args.ping:
             print(f"[!!] 未配置 {WEBHOOK_ENV}，以上异常无法送达任何人")
-        return 1 if alerts else 0
+        return 1 if alerts or args.ping else 0
 
     if args.dry_run:
         print("[dry-run] 不发送、不写状态")
@@ -384,7 +379,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.ping and not alerts:
         # 正向播报：本机看门无法自证存活，这条日报的**缺席**才是真正的信号，
         # 需要人来注意到。它不是「一切正常」的证明，只是 dead-man switch 的人肉版。
-        send(f"【Plum 数仓】入库正常。\n{summary}", webhook)
+        if not send(f"【Plum 数仓】入库正常。\n{summary}", webhook):
+            return 1
 
     return 1 if alerts else 0
 
