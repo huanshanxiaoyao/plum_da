@@ -3,22 +3,23 @@
 用 rsync 而不是自己写传输：rsync 默认写临时名、传完才 rename，
 **局部传输永远不会以最终文件名出现**——这正好和「manifest 在场即完整」这条约定叠成两层。
 
-拉取端不做任何过滤逻辑：拉全量目录，由装载端按「有没有 manifest」决定哪些能用。
-把「文件是否完整」的判断集中在一处，是为了不让传输层和装载层各持一套标准。
+先扫描 manifest，再按明确清单拉取数据及其 manifest，不传输活切片。
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import shlex
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from typing import List, Optional
 
-from .filespec import LOCK_FILENAME
+from .filespec import DATA_SUFFIX, LOCK_FILENAME, MANIFEST_SUFFIX
 
 logger = logging.getLogger("plum_da.pull")
 
@@ -50,11 +51,11 @@ def build_command(remote: str, landing: Path, ssh_key: Optional[str] = None) -> 
 
     ssh = "ssh -o BatchMode=yes -o StrictHostKeyChecking=yes"
     if ssh_key:
-        ssh += f" -i {ssh_key}"
+        ssh += f" -o IdentitiesOnly=yes -i {shlex.quote(ssh_key)}"
     return [
         "rsync",
         "-az",
-        "--partial",
+        "--no-links",
         # 写锁是机器 A 的进程内状态，拉过来没有意义还会造成误解。
         f"--exclude={LOCK_FILENAME}",
         # 只增不删：机器 A 过了保留期删文件，不该连带删掉这边还没装的落地副本。
@@ -84,12 +85,44 @@ def pull(
     if shutil.which("rsync") is None:
         raise RuntimeError("PATH 上没有 rsync")
 
-    cmd = build_command(remote, landing, ssh_key)
-    logger.info("pull: %s", " ".join(cmd))
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
-    if proc.returncode != 0:
-        logger.error("rsync 退出码 %s: %s", proc.returncode, proc.stderr.strip()[:500])
-    return PullResult(proc.returncode, proc.stdout, proc.stderr)
+    # 每轮重新扫描，不能使用本地残留 manifest 作为远端已封盘的证据。
+    with tempfile.TemporaryDirectory(prefix="plum-da-manifests-") as scan_dir:
+        scan_root = Path(scan_dir)
+        scan_cmd = build_command(remote, scan_root, ssh_key)
+        scan_cmd[1:1] = [
+            "--include=*/",
+            f"--include=*{DATA_SUFFIX}{MANIFEST_SUFFIX}",
+            "--exclude=*",
+            "--prune-empty-dirs",
+        ]
+        logger.info("扫描远端 manifest")
+        scan = subprocess.run(
+            scan_cmd, capture_output=True, text=True, timeout=timeout, check=False
+        )
+        if scan.returncode != 0:
+            logger.error("manifest 扫描失败 %s: %s", scan.returncode, scan.stderr.strip()[:500])
+            return PullResult(scan.returncode, scan.stdout, scan.stderr)
+
+        files: List[str] = []
+        for manifest in sorted(scan_root.rglob(f"*{DATA_SUFFIX}{MANIFEST_SUFFIX}")):
+            if not manifest.is_file() or manifest.is_symlink():
+                continue
+            relative = manifest.relative_to(scan_root).as_posix()
+            files.extend([relative[: -len(MANIFEST_SUFFIX)], relative])
+        logger.info("远端已封盘切片: %d", len(files) // 2)
+        if not files:
+            return PullResult(0, "", "")
+
+        cmd = build_command(remote, landing, ssh_key)
+        # --files-from 下 -a 不隐含递归；清单只含文件，不能扩大为整个日期目录。
+        cmd[1:1] = ["--files-from=-", "--from0"]
+        proc = subprocess.run(
+            cmd, input="\0".join(files) + "\0", capture_output=True,
+            text=True, timeout=timeout, check=False,
+        )
+        if proc.returncode != 0:
+            logger.error("rsync 退出码 %s: %s", proc.returncode, proc.stderr.strip()[:500])
+        return PullResult(proc.returncode, proc.stdout, proc.stderr)
 
 
 def prune_landing(

@@ -29,8 +29,7 @@ class IntegrityError(RuntimeError):
 def _parse_lines(slice_file: SliceFile) -> Tuple[List[List[Any]], List[str], int]:
     """解析整个切片，返回 (行, 坏行原因, 总行数)。
 
-    坏行**不阻断**整个文件：一行 JSON 解析失败就丢掉整个切片，等于让一个字节的损坏
-    带走一小时的数据。计数上报出来，人来判断要不要追。
+    收集坏行原因，由调用方拒绝整个文件，保留后续修复重试的机会。
     """
 
     rows: List[List[Any]] = []
@@ -81,6 +80,9 @@ def load_slice(conn: Any, slice_file: SliceFile, *, verify_sha: bool = True) -> 
             f"{slice_file.key}: 行数不符 manifest={manifest.line_count} actual={total}"
         )
 
+    if bad:
+        raise IntegrityError(f"{slice_file.key}: {len(bad)} 行无法解析，拒绝登记台账：{bad[:5]}")
+
     table = "product_events_dead" if slice_file.lane == LANE_DEAD else "product_events"
     columns = DEAD_COLUMNS if slice_file.lane == LANE_DEAD else EVENT_COLUMNS
 
@@ -102,9 +104,6 @@ def load_slice(conn: Any, slice_file: SliceFile, *, verify_sha: bool = True) -> 
                         copy.write_row(row)
         ledger.record(conn, slice_file, manifest, rows_loaded=len(rows))
     conn.commit()
-
-    if bad:
-        logger.warning("%s: %d 行无法解析，已跳过：%s", slice_file.key, len(bad), bad[:5])
 
     return {
         "file_key": slice_file.key,

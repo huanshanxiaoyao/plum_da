@@ -112,7 +112,8 @@ def main(argv: List[str] | None = None) -> int:
 
     print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
     # 有文件装载失败时以非 0 退出，让 cron 的失败告警能抓到；已成功的部分不回滚。
-    return 1 if failed else 0
+    pull_failed = report.get("pull", {}).get("returncode", 0) != 0
+    return 1 if failed or pull_failed else 0
 
 
 if __name__ == "__main__":

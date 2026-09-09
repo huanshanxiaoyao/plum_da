@@ -136,3 +136,25 @@ def test_bad_file_does_not_block_the_rest(conn, tmp_path):
     assert summary["loaded_files"] == 1
     assert len(summary["failed"]) == 1
     assert _count(conn) == 4
+
+
+def test_bad_row_keeps_file_pending_until_fixed(conn, tmp_path):
+    path = _write_slice(tmp_path, 5, 2)
+    with gzip.open(path, "wt") as handle:
+        handle.write(json.dumps(_envelope(0)) + "\nnot-json\n")
+    manifest_path = Path(str(path) + ".manifest")
+    manifest = json.loads(manifest_path.read_text())
+    manifest["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest))
+
+    summary = load_pending(conn, list(iter_sealed_slices(tmp_path)))
+    assert len(summary["failed"]) == 1
+    assert _count(conn) == 0
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT count(*) FROM {SCHEMA}.ingest_ledger")
+        assert cur.fetchone()[0] == 0
+
+    _write_slice(tmp_path, 5, 2)
+    summary = load_pending(conn, list(iter_sealed_slices(tmp_path)))
+    assert summary["loaded_files"] == 1
+    assert _count(conn) == 2
