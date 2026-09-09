@@ -14,7 +14,7 @@ retention. First seen means first observed within this explicitly displayed scop
 ## Goal and baseline
 
 Give Plum operators a read-only daily view of visitors, qualified feed impressions,
-clicks, CTR and character performance. The browser -> A files -> B PostgreSQL
+clicks, messages, CTR and character performance. The browser -> A files -> B PostgreSQL
 pipeline is already deployed and accepted according to the deployment handoff.
 The persistent models, dashboard and Watchdog are deployed; controlled notification
 receipt and real browser attribution are confirmed. Natural daily scheduling and
@@ -42,7 +42,7 @@ examples of 14-day retention and hash-keyed ledger states.
 - The user waived local browser-to-A-to-B integration for this release. Automated
   tests and the subsequent real browser production acceptance are recorded separately.
 - Generate a daily static, authenticated dashboard, following existing D10. Include
-  date filters, daily browser visitors/new visitors, impressions/clicks/CTR, character
+  date filters, daily browser visitors/new visitors, messages, impressions/clicks/CTR, character
   performance, data freshness and processing/coverage status. No person-level data
   or database credentials may be embedded in the static output.
 - Emit character_profile_viewed only once a character page actually loads, with
@@ -64,6 +64,7 @@ examples of 14-day retention and hash-keyed ledger states.
 | A7 | The dashboard works on desktop/mobile and keyboard, and exports no visitor/account identifiers. |
 | A8 | A successful character load emits one view with the correct entry context; failed loads and effect reruns do not duplicate it. |
 | A9 | Watchdog tests cover healthy/late/missing/failed signals; real notification delivery is a separate production acceptance. |
+| A10 | Message totals deduplicate message_sent; per-character rows combine impressions, clicks and messages through a stable conversation mapping. |
 
 ## Deferred
 

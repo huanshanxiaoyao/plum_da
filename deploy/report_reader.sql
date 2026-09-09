@@ -7,5 +7,5 @@ DO $$ BEGIN
 END $$;
 GRANT USAGE ON SCHEMA analytics TO plum_report;
 GRANT SELECT ON analytics.report_visitors, analytics.report_feed,
-  analytics.report_clicks, analytics.report_status TO plum_report;
+  analytics.report_clicks, analytics.report_messages, analytics.report_status TO plum_report;
 ALTER ROLE plum_report SET default_transaction_read_only = on;

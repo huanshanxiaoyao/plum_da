@@ -171,3 +171,40 @@ def test_report_entrypoint_can_repeat_after_all_migrations_are_applied(conn, mon
     assert run_report.main(args) == 0
     assert run_report.main(args) == 0
     assert scalar(conn, "SELECT sum(impressions) FROM analytics.daily_feed") == 1
+
+
+def test_messages_are_deduplicated_and_attributed_to_character(conn):
+    conversation = event("conversation_started", props={
+        "conversation_id": "conversation-a", "character_id": "character-a"})
+    message = event("message_sent", props={"conversation_id": "conversation-a"}, seconds=1)
+    source(conn, conversation, message)
+    source(conn, message)
+    refresh(conn)
+    refresh(conn)
+    assert scalar(conn, "SELECT count(*) FROM analytics.message_events") == 1
+    assert scalar(conn, "SELECT sum(messages) FROM analytics.daily_visitors") == 1
+    assert scalar(conn, "SELECT character_id FROM analytics.daily_messages") == "character-a"
+    assert scalar(conn, "SELECT sum(messages) FROM analytics.daily_messages") == 1
+
+
+def test_message_gets_role_when_mapping_arrives_later(conn):
+    source(conn, event("message_sent", props={"conversation_id": "conversation-a"}))
+    refresh(conn)
+    assert scalar(conn, "SELECT sum(messages) FROM analytics.daily_visitors") == 1
+    assert scalar(conn, "SELECT count(*) FROM analytics.daily_messages") == 0
+    source(conn, event("conversation_resumed", props={
+        "conversation_id": "conversation-a", "character_id": "character-a"}, seconds=1))
+    refresh(conn)
+    assert scalar(conn, "SELECT sum(messages) FROM analytics.daily_messages") == 1
+
+
+def test_conflicting_conversation_character_rolls_back(conn):
+    source(conn, event("conversation_started", props={
+        "conversation_id": "conversation-a", "character_id": "character-a"}))
+    refresh(conn)
+    source(conn, event("conversation_resumed", props={
+        "conversation_id": "conversation-a", "character_id": "character-b"}, seconds=1))
+    with pytest.raises(ProjectionError, match="multiple characters"):
+        refresh(conn)
+    assert scalar(conn, "SELECT character_id FROM analytics.conversation_characters") == "character-a"
+    assert scalar(conn, "SELECT count(*) FROM analytics.projected_files") == 1

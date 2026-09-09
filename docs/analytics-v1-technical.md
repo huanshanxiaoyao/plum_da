@@ -1,6 +1,6 @@
 # Analytics V1 technical plan
 
-2026-09-09: migration 007, persistent models, report and Watchdog are deployed;
+2026-09-09: migrations 007 and 008, persistent models, report and Watchdog are deployed;
 the core business data flow passed production acceptance and the user closed phase 1.
 See the [acceptance record](analytics-v1-acceptance.md) for evidence; four unverified
 operational checks are the starting work of [phase 2](analytics-phase2-data-quality.md).
@@ -15,7 +15,7 @@ artifacts generated from aggregate tables, never a public query API.
 
 ## Storage and processing
 
-Append migration 007; never edit deployed migrations 001-006. Persist an event-ID
+Migrations 007 and 008 are append-only; never edit deployed migrations 001-006. Persist an event-ID
 registry, lifetime visitors, daily browser activity, qualified impressions, clicks,
 and a source-file projection ledger. Preserve the old dim_visitor query interface
 with a view over the persistent visitor table. Per the user's internal-beta scope
@@ -23,6 +23,12 @@ decision, initial projection fixes `projection_settings.start_day` to today UTC.
 No historical backfill or migration is performed. Only source-file days at or after
 that date are projected. In-scope row counts must match the ingest ledger before
 a file is marked complete. A missing source blocks projection; it cannot become a zero day.
+
+Migration 008 persists deduplicated message events and conversation-to-character
+mappings. It catches up only already projected, in-scope sources still present in
+ODS; it does not broaden the fixed coverage start. Daily message totals include
+every message event, while per-character totals include messages with a known stable
+conversation mapping. Conflicting mappings fail the projection transaction.
 
 Projection is serialized with a PostgreSQL advisory transaction lock. Each run is
 atomic: new event keys, visitor history, feed facts and projection ledger either all
@@ -76,7 +82,7 @@ supported by user-confirmed receipt of a controlled ping and isolated missing-he
 alert; the first natural daily ping and long-term stale drill remain pending.
 
 Rollback disables the new report timer and restores the previous HTML artifact.
-Keep migration 007 and persistent tables: deleting them loses visitor history.
+Keep migrations 007 and 008 and persistent tables: deleting them loses visitor history.
 The ingest entrypoint remains compatible; the retention guard is intentionally kept
 until pending sources are projected or an explicit data-retention decision is made.
 

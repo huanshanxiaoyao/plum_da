@@ -61,6 +61,7 @@ def test_export_uses_aggregate_only_reader_and_contains_no_browser_ids(monkeypat
         conn.commit()
         data = snapshot(conn)
         assert data["feed"][0]["impressions"] == 1
+        assert data["messages"] == []
         assert "browser-private" not in render(data)
         assert "visitor_id" not in render(data)
         for table in ["product_events", "event_registry", "dim_visitor", "visitor_activity"]:
@@ -70,3 +71,12 @@ def test_export_uses_aggregate_only_reader_and_contains_no_browser_ids(monkeypat
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             conn.execute("INSERT INTO analytics.daily_visitors VALUES ('2026-09-09', 1, 1, 1)")
         conn.rollback()
+
+
+def test_message_metrics_are_present_in_snapshot_template():
+    data = demo()
+    assert data["visitors"][0]["messages"] > 0
+    assert data["messages"][0]["messages"] > 0
+    html = render(data)
+    assert "消息数 · 全角色" in html
+    assert '<th scope="col">曝光</th><th scope="col">点击</th><th scope="col">消息数</th>' in html

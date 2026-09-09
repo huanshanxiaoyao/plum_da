@@ -19,6 +19,7 @@ Historical users/data are excluded, not migrated or backfilled.
 | A7 Responsive and private static output | Local 1440/390/320 px checks and script escaping; production aggregate-only reader permissions and HTTPS authentication verified | Permissions passed in production; real desktop/mobile dashboard checks pending |
 | A8 Character view lifecycle | Local lifecycle regression tests; two real browser visits each yielded one exposure, click and successful profile view with matching context | Core production flow passed; no claim of separate live coverage for every auth/error branch |
 | A9 Watchdog delivery support | Local heartbeat/ledger/cooldown/response tests; user confirmed receipt of manual healthy ping and isolated heartbeat_missing alert | Controlled delivery passed; first natural daily ping pending |
+| A10 Message totals and character attribution | PostgreSQL tests cover duplicate messages, late role mapping and conflicting role rollback; dashboard groups exposure, clicks and messages by character | Passed locally and deployed |
 
 ## Local evidence
 
@@ -50,9 +51,10 @@ Historical users/data are excluded, not migrated or backfilled.
   `docs/analytics-v1-release-handoff`; never merge this branch into backend main
   merely to synchronize documentation, as main deploys the business backend.
 - B checkout `/opt/workspace/plum_da`, service user `plum_da`, PostgreSQL 16/main
-  on loopback port 5432, database `plum_da`. Migration `007_persistent_analytics`
-  applied; coverage and attribution match the values above. Existing A/B collection
-  remains running; no historical migration/backfill or coverage-start change.
+  on loopback port 5432, database `plum_da`. Migrations `007_persistent_analytics`
+  and `008_messages` are applied; coverage and attribution match the values above.
+  Existing A/B collection remains running; no historical migration/backfill or
+  coverage-start change.
 - Ingest, report, watchdog and watchdog-ping timers are enabled/active. This is
   installation evidence, not evidence of each timer's first natural execution.
 - Dashboard uses the protected IP HTTPS `/plum-report` location; the actual host
@@ -112,6 +114,20 @@ Keep these pending until actual evidence is reported, even after the scheduled t
 - Across all three repositories, added relative links, Markdown code fences and
   added sensitive-value patterns were checked; `git diff --check` passed.
   This closeout does not deploy, restart, change A, or alter B's coverage start.
+
+## Message dashboard increment
+
+2026-09-09 at 14:55 UTC:
+
+- Migration `008_messages` applied and the report service published atomically.
+- The first core card shows 29 deduplicated messages. All 29 map to 8 roles;
+  zero messages are unattributed. Role rows combine exposure, click and message counts.
+- Authenticated HTTPS returned 200 with the new metric; unauthenticated HTTPS returned 401.
+- The report reader can select the message aggregate and cannot select message facts.
+- Ruff and `git diff --check` passed. The database-enabled suite passed 81 tests
+  with only the temporary peer-auth reader test deselected; the real production reader
+  export covered that path.
+
 
 ## Rollback
 

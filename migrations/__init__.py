@@ -184,6 +184,7 @@ MIGRATIONS: List[Tuple[str, str]] = [
     ("005_widen_skew_and_dead_event_id", _M005),
     ("006_dim_visitor", _M006),
     ("007_persistent_analytics", Path(__file__).with_name("007_analytics.sql").read_text()),
+    ("008_messages", Path(__file__).with_name("008_messages.sql").read_text()),
 ]
 
 _VERSION_TABLE = f"""

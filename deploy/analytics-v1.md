@@ -7,17 +7,19 @@ the four unverified operational observations now start
 remains in [the acceptance record](../docs/analytics-v1-acceptance.md).
 The procedures below are deployment/rollback reference, not a request to reinstall
 the running system during documentation closeout.
+The message dashboard increment (migration 008) was deployed at 14:55 UTC; the
+report service and authenticated HTTPS checks passed.
 Existing A/B collection and transport remain running. No A business API changes.
 Internal beta scope: **no historical user migration or event backfill**. First
 successful projection fixes the start date to today UTC; subsequent runs reuse it.
 Events in earlier source-file days are excluded and expire normally. Only newly
 scoped sources must be projected before ODS expiry. Do not change the start date
 or delete existing data to get past an error.
-
 Actual B checkout is `/opt/workspace/plum_da`; the deployed units adapt the template
-path `/opt/plum_da`. PostgreSQL is 16/main on loopback port 5432. Migration
-`007_persistent_analytics` is applied, coverage is **2026-09-09 UTC**, and attribution
-is **604800 seconds**. Ingest/report/watchdog/watchdog-ping timers are enabled/active.
+path `/opt/plum_da`. PostgreSQL is 16/main on loopback port 5432. Migrations
+`007_persistent_analytics` and `008_messages` are applied; coverage is
+**2026-09-09 UTC**, and attribution is **604800 seconds**.
+Ingest/report/watchdog/watchdog-ping timers are enabled/active.
 The dashboard uses protected IP HTTPS at `/plum-report`; the host root serves
 sub2api. Actual host addresses and credentials remain in controlled operations records.
 
@@ -29,7 +31,7 @@ sub2api. Actual host addresses and credentials remain in controlled operations r
    internal beta on 2026-09-09; this is also the command default. Record it in the
    deployment environment so the operating configuration is explicit.
 3. With the existing owner DSN, run `.venv/bin/python run_report.py --only project`.
-   This applies migration 007 and activates the model from today UTC. There is
+   This applies migrations 007-008 and activates the model from today UTC. There is
    no historical conversion requirement for this internal beta.
 4. As DBA, run `deploy/report_reader.sql` in `plum_da`, then set the dedicated
    role's password using psql `\password plum_report`. Do not pass secrets in shell
@@ -51,7 +53,7 @@ Readiness checklist for future releases (current results are in the acceptance r
 - `SELECT * FROM analytics.report_status` shows the intended start day, window,
   model time and ingest/event watermarks. A late click revises its earlier exposure
   day on the next daily run. Today and the open attribution window are provisional.
-- Reader can query the four `report_*` views and cannot SELECT `product_events`,
+- Reader can query the five `report_*` views and cannot SELECT `product_events`,
   `event_registry`, `dim_visitor`, or any `visitor_id` table; INSERT must fail.
 - Unauthenticated HTTPS request is 401, authenticated request is 200, HTTP redirects
   to HTTPS. Check mobile date filtering and the latest data timestamps.
@@ -83,7 +85,7 @@ makes failed/missing-config health pings return nonzero.
 ## Rollback
 
 Disable the report timer and restore the last good HTML from an operator backup.
-Keep migration 007 and persistent state. Removing the tables loses tracked history
+Keep migrations 007 and 008 and persistent state. Removing the tables loses tracked history
 and breaks the new ODS-expiry guard. Frontend rollback removes only the new view
 event. New frontend telemetry requires no backend deployment. Existing raw pipeline
 remains running. B code/model installation is complete; this documentation closeout

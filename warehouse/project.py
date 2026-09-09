@@ -153,6 +153,47 @@ def project(conn, attribution_seconds: int, *, start_day: date | None = None):
                                 copy.write_row(row)
         with conn.cursor() as cur:
             cur.execute("""
+                SELECT event_id FROM fresh_events
+                WHERE event_name IN ('conversation_started', 'conversation_resumed')
+                  AND (nullif(btrim(props ->> 'conversation_id'), '') IS NULL
+                    OR nullif(btrim(props ->> 'character_id'), '') IS NULL)
+                LIMIT 1
+            """)
+            invalid_conversation = cur.fetchone()
+            if invalid_conversation:
+                raise ProjectionError(
+                    f"event {invalid_conversation[0]}: missing/invalid conversation mapping"
+                )
+            cur.execute("""
+                WITH mappings AS (
+                  SELECT props ->> 'conversation_id' conversation_id,
+                         props ->> 'character_id' character_id
+                  FROM fresh_events
+                  WHERE event_name IN ('conversation_started', 'conversation_resumed')
+                  UNION ALL
+                  SELECT conversation_id, character_id
+                  FROM analytics.conversation_characters
+                )
+                SELECT conversation_id FROM mappings GROUP BY conversation_id
+                HAVING count(DISTINCT character_id) > 1 LIMIT 1
+            """)
+            conflict = cur.fetchone()
+            if conflict:
+                raise ProjectionError(
+                    f"conversation {conflict[0]} maps to multiple characters"
+                )
+            cur.execute("""
+                SELECT event_id FROM fresh_events
+                WHERE event_name = 'message_sent'
+                  AND nullif(btrim(props ->> 'conversation_id'), '') IS NULL
+                LIMIT 1
+            """)
+            invalid_message = cur.fetchone()
+            if invalid_message:
+                raise ProjectionError(
+                    f"event {invalid_message[0]}: missing/invalid conversation_id"
+                )
+            cur.execute("""
                 SELECT request_id FROM (
                     SELECT * FROM new_requests UNION ALL SELECT * FROM analytics.feed_requests
                 ) r GROUP BY request_id
@@ -173,6 +214,14 @@ def project(conn, attribution_seconds: int, *, start_day: date | None = None):
                   occurred_at = least(impressions.occurred_at, excluded.occurred_at),
                   dwell_ms = greatest(impressions.dwell_ms, excluded.dwell_ms);
                 INSERT INTO analytics.clicks SELECT * FROM new_clicks;
+                INSERT INTO analytics.conversation_characters
+                SELECT DISTINCT props ->> 'conversation_id', props ->> 'character_id'
+                FROM fresh_events
+                WHERE event_name IN ('conversation_started', 'conversation_resumed')
+                ON CONFLICT DO NOTHING;
+                INSERT INTO analytics.message_events
+                SELECT event_id, props ->> 'conversation_id', business_day
+                FROM fresh_events WHERE event_name = 'message_sent';
                 INSERT INTO analytics.projected_files (file_key, sha256, rows_loaded)
                 SELECT file_key, sha256, rows_loaded FROM pending_sources
             """)

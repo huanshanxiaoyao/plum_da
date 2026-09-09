@@ -8,7 +8,8 @@ from pathlib import Path
 
 from psycopg.rows import dict_row
 
-VIEWS = {"visitors": "report_visitors", "feed": "report_feed", "clicks": "report_clicks"}
+VIEWS = {"visitors": "report_visitors", "feed": "report_feed", "clicks": "report_clicks",
+         "messages": "report_messages"}
 
 
 def snapshot(conn):
@@ -59,15 +60,18 @@ def demo():
     now = datetime.now(timezone.utc).isoformat()
     data = {"demo": True, "generated_at": now, "status": {"refreshed_at": now,
         "ingest_watermark": now, "event_watermark": now, "coverage_start": str(today - timedelta(days=13)),
-        "attribution_seconds": 604800, "projected_files": 42}, "visitors": [], "feed": [], "clicks": []}
+        "attribution_seconds": 604800, "projected_files": 42}, "visitors": [], "feed": [],
+        "clicks": [], "messages": []}
     for n in range(14):
         day = str(today - timedelta(days=13 - n))
         data["visitors"].append(dict(business_day=day, visitors=40 + n * 7,
-            new_visitors=15 + n * 2, profile_views=25 + n * 4))
+            new_visitors=15 + n * 2, profile_views=25 + n * 4, messages=80 + n * 6))
         for k, name in enumerate(["Mira", "Rowan", "Luna"]):
             data["feed"].append(dict(business_day=day, character_id=name, surface="for_you",
                 rank_version="baseline-v1", exp_bucket="control", impressions=100 + n * 17 + k * 8,
                 clicked_impressions=9 + n + k))
             data["clicks"].append(dict(business_day=day, character_id=name, surface="for_you",
                 clicks=14 + n + k, unmatched_clicks=2))
+            data["messages"].append(dict(business_day=day, character_id=name,
+                messages=20 + n + k))
     return data

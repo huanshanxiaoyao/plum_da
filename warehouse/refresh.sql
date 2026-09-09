@@ -19,9 +19,21 @@ WITH active AS (
 ), profiles AS (
   SELECT business_day, count(*) views FROM analytics.event_registry
   WHERE event_name = 'character_profile_viewed' GROUP BY business_day
+), message_totals AS (
+  SELECT business_day, count(*) messages
+  FROM analytics.message_events GROUP BY business_day
 )
-SELECT business_day, coalesce(visitors, 0), coalesce(new_visitors, 0), coalesce(views, 0)
-FROM active FULL JOIN new USING(business_day) FULL JOIN profiles USING(business_day);
+SELECT business_day, coalesce(visitors, 0), coalesce(new_visitors, 0),
+       coalesce(views, 0), coalesce(messages, 0)
+FROM active FULL JOIN new USING(business_day) FULL JOIN profiles USING(business_day)
+FULL JOIN message_totals USING(business_day);
+
+DELETE FROM analytics.daily_messages;
+INSERT INTO analytics.daily_messages
+SELECT m.business_day, c.character_id, count(*)
+FROM analytics.message_events m
+JOIN analytics.conversation_characters c USING(conversation_id)
+GROUP BY m.business_day, c.character_id;
 
 CREATE TEMP TABLE matched_clicks ON COMMIT DROP AS
 SELECT c.event_id, i.request_id, i.character_id, i.position

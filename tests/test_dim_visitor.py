@@ -13,6 +13,7 @@ import os
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
+from psycopg.types.json import Jsonb
 
 from migrations import SCHEMA, apply_migrations
 from warehouse.partitions import ensure_partitions
@@ -50,8 +51,8 @@ def _insert(connection, *rows) -> None:
                 f"""
                 INSERT INTO {SCHEMA}.product_events
                   (event_id, event_name, dict_version, server_time, business_day,
-                   subject_kind, visitor_id, source_file)
-                VALUES (%s, %s, '1', %s, %s, %s, %s, 'test')
+                   subject_kind, visitor_id, source_file, props)
+                VALUES (%s, %s, '1', %s, %s, %s, %s, 'test', %s)
                 """,
                 (
                     f"00000000-0000-4000-8000-{index:012d}",
@@ -60,6 +61,8 @@ def _insert(connection, *rows) -> None:
                     _DAY,
                     "visitor" if visitor_id else "member",
                     visitor_id,
+                    Jsonb({"conversation_id": f"conversation-{index}"})
+                    if event_name == "message_sent" else Jsonb({}),
                 ),
             )
         cur.execute("""INSERT INTO analytics.ingest_ledger
