@@ -1,7 +1,8 @@
 # Analytics V1 requirements
 
-Date: 2026-09-09. Status: phase-1 core business data flow accepted in production;
-four operational checks remain pending. Evidence and exact scope:
+Date: 2026-09-09. Status: phase 1 closed by user decision after its core business
+data flow passed production acceptance. Four unverified operational checks transfer
+to [phase 2: data quality](analytics-phase2-data-quality.md). Evidence and exact scope:
 [acceptance record](analytics-v1-acceptance.md).
 
 Scope correction from the user, 2026-09-09: this is a new product in internal beta.

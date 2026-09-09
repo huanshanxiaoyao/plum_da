@@ -1,9 +1,10 @@
 # Analytics V1 technical plan
 
 2026-09-09: migration 007, persistent models, report and Watchdog are deployed;
-the core business data flow passed production acceptance. See the
-[acceptance record](analytics-v1-acceptance.md) for evidence and four pending
-operational checks. This plan describes implementation, not an instruction to redeploy.
+the core business data flow passed production acceptance and the user closed phase 1.
+See the [acceptance record](analytics-v1-acceptance.md) for evidence; four unverified
+operational checks are the starting work of [phase 2](analytics-phase2-data-quality.md).
+This plan describes implementation, not an instruction to redeploy.
 
 ## Boundaries
 

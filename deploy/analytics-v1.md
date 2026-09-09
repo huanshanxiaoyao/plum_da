@@ -1,8 +1,10 @@
 # Analytics V1 deployment and acceptance
 
 2026-09-09: production installation and core business data flow acceptance completed,
-according to machine B's report and user confirmation. Current evidence and the four
-remaining operational checks are in [the acceptance record](../docs/analytics-v1-acceptance.md).
+according to machine B's report and user confirmation. The user has closed phase 1;
+the four unverified operational observations now start
+[phase 2: data quality](../docs/analytics-phase2-data-quality.md). Historical evidence
+remains in [the acceptance record](../docs/analytics-v1-acceptance.md).
 The procedures below are deployment/rollback reference, not a request to reinstall
 the running system during documentation closeout.
 Existing A/B collection and transport remain running. No A business API changes.

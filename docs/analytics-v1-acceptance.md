@@ -1,9 +1,10 @@
 # Analytics V1 acceptance
 
-Status, 2026-09-09: **phase-1 core business data flow accepted in production**,
+Status, 2026-09-09: **phase 1 closed by user decision; core business data flow accepted in production**,
 based on machine B's execution report and the user's browser/notification confirmation.
-This documentation closeout did not recheck or redeploy production. Four operational
-acceptance items remain below; service startup and committed code do not close them.
+This documentation closeout did not recheck or redeploy production. Four unverified
+operational items transfer to [phase 2: data quality](analytics-phase2-data-quality.md)
+as its starting work. Their evidence remains pending; phase-1 closure does not pass them.
 Coverage starts on 2026-09-09 UTC, with seven-day attribution (604800 seconds).
 Historical users/data are excluded, not migrated or backfilled.
 
@@ -81,7 +82,10 @@ Historical users/data are excluded, not migrated or backfilled.
 Cross-repository record:
 [release handoff](https://github.com/huanshanxiaoyao/ai4all_bridge/blob/docs/analytics-v1-release-handoff/docs/ops/products/plum/analytics_v1_release_handoff.md).
 
-## Operational acceptance still required
+## Operational observations transferred to phase 2
+
+The following is the phase-1 handoff snapshot. Track execution and subsequent
+results as O1-O4 in [the phase-2 plan](analytics-phase2-data-quality.md).
 
 1. `plum-da-watchdog-ping.timer`: first natural run on 2026-09-09 at **10:05 UTC**.
 2. `plum-da-report.timer`: first natural run on 2026-09-10 at **00:30 UTC**.
