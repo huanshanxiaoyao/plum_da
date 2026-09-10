@@ -10,8 +10,9 @@ then concentrates on the reliability of the data used for product decisions.
 
 - Phase-1 evidence remains in [the acceptance record](analytics-v1-acceptance.md).
   Keep the deployed A/B pipeline, migration 007 and persistent model running.
-- Coverage stays at **2026-09-09 UTC**, attribution at **7 days / 604800 seconds**.
-  No historical-user migration, pre-coverage backfill or legacy compatibility work.
+- Following the 2026-09-10 visitor incident correction, trustworthy coverage starts
+  at **2026-09-10 UTC**; attribution stays at **7 days / 604800 seconds**. No
+  historical-user migration, pre-coverage backfill or legacy compatibility work.
 - Phase 2 serves internal operators who need to distinguish valid zero activity,
   missing data, provisional attribution and stale output before interpreting CTR.
 - This change publishes the plan and documentation PRs only. It does not execute
@@ -65,6 +66,31 @@ ratios. The open seven-day attribution window and today's data remain provisiona
 late delivery can revise earlier results. An unmatched click is a quality signal,
 not automatically an implementation bug, because source events are best effort.
 Do not require exposure/click/profile counts to be equal across all organic traffic.
+
+## 2026-09-10 visitor inflation incident
+
+- Symptom: the 2026-09-09 model reported 830 browser identifiers, 777 of which had
+  exactly one event and that event was `visitor_first_seen`.
+- Root cause: the active `plum-api-feed` Uptime Kuma monitor requested the business
+  Feed every 60 seconds without a cookie. The former backend minted a new visitor ID
+  per stateless request. Exactly 729 singleton IDs followed the one-minute cadence;
+  another 52 former server-minted IDs were not recoverably linkable.
+- Containment: the backend's client-minted/read-only visitor contract was already
+  effective for current traffic. The redundant Feed monitor was disabled while the
+  existing Web keyword and HTTP monitors remained active.
+- Correction: production analytics and the previous HTML were backed up. Only
+  derived facts were cleared; ODS, ingest ledger and dead letters were retained.
+  The model was rebuilt with 2026-09-10 coverage and zero sessionless first-seen
+  events in scope.
+- Prevention: projection rejects any future `visitor_first_seen` without a client
+  session before writing persistent facts. The dashboard averages browser visitors
+  over complete UTC days only and labels that definition explicitly.
+- Execution evidence: the protected rollback bundle is
+  `/var/backups/plum_da/visitor-rebaseline-20260910T014839Z/`. The manual model and
+  atomic report build completed successfully at 01:53 UTC with coverage 2026-09-10,
+  a seven-day attribution window, four provisional current-day browser identifiers
+  and zero in-scope sessionless first-seen events. Ingest and report timers were
+  restored active after verification.
 
 ## Ownership and validation
 

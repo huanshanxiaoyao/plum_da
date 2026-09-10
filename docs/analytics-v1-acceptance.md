@@ -5,8 +5,14 @@ based on machine B's execution report and the user's browser/notification confir
 This documentation closeout did not recheck or redeploy production. Four unverified
 operational items transfer to [phase 2: data quality](analytics-phase2-data-quality.md)
 as its starting work. Their evidence remains pending; phase-1 closure does not pass them.
-Coverage starts on 2026-09-09 UTC, with seven-day attribution (604800 seconds).
-Historical users/data are excluded, not migrated or backfilled.
+The original coverage started on 2026-09-09 UTC, with seven-day attribution
+(604800 seconds).
+
+Correction, 2026-09-10: 729 exact one-minute Feed probes and another 52 identifiers
+from the former server-side minting path made the first day's visitor aggregate
+untrustworthy. After a protected backup, the derived model was rebuilt from retained
+ODS with 2026-09-10 as the effective coverage start. Raw events and ingest ledgers
+were preserved; 2026-09-09 remains historical incident evidence, not reportable UV.
 
 | Requirement | Evidence | Status |
 | --- | --- | --- |

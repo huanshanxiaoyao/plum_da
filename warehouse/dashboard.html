@@ -108,7 +108,11 @@ function render(){
   if((Date.parse(end)-Date.parse(start))/dayMs>366){$("end").setCustomValidity("每次最多查看 367 天");$("end").reportValidity();return;}
   result=summarize(start,end);page=0;
   const t=result.totals;
-  const values=[["消息数 · 全角色",count(t.messages)],["日均访客 · 全站",count(t.visitors/result.daily.length)],["新访客 · 全站",count(t.new_visitors)],
+  const generatedDay=dayOf(data.generated_at);
+  const completed=result.daily.filter(row=>row.day<generatedDay);
+  const completedVisitors=completed.reduce((sum,row)=>sum+row.visitors,0);
+  const averageVisitors=completed.length?count(completedVisitors/completed.length):"--";
+  const values=[["消息数 · 全角色",count(t.messages)],["日均访客 · 全站完整日",averageVisitors],["新访客 · 全站",count(t.new_visitors)],
     ["曝光 · 全入口",count(t.impressions)],["点击事件 · 全入口",count(t.clicks)],["CTR · 全入口",ratio(t.clicked_impressions,t.impressions)],["未归因点击",count(t.unmatched_clicks)]];
   $("metrics").replaceChildren(...values.map(([label,value])=>{const div=document.createElement("div");div.className="metric";const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=label;dd.textContent=value;div.append(dt,dd);return div;}));
   $("daily").replaceChildren(...result.daily.map(r=>cellRow([r.day,count(r.visitors),count(r.new_visitors),count(r.profile_views),count(r.impressions),count(r.clicks),count(r.messages),count(r.unmatched_clicks),ratio(r.clicked_impressions,r.impressions)])));
@@ -131,7 +135,7 @@ $("filters").addEventListener("submit",event=>{event.preventDefault();render();}
 $("recent").addEventListener("click",recent);$("sort").addEventListener("change",()=>{page=0;renderCharacters();});
 $("prev").addEventListener("click",()=>{page--;renderCharacters();});$("next").addEventListener("click",()=>{page++;renderCharacters();});
 $("freshness").textContent=`统计更新：${time(data.status.refreshed_at)}　 入库更新：${time(data.status.ingest_watermark)}　 最近事件：${time(data.status.event_watermark)}`;
-$("definitions").textContent=`统计起点：${coverage} UTC。消息数 = 已采集并去重的 message_sent 事件；角色消息通过 conversation_id 关联到对话的角色。访客按浏览器标识统计，不等同于人数；日均访客不是区间去重访客。CTR = 被点击曝光 / 合格曝光，同一曝光最多计一次点击；归因窗口 ${count(data.status.attribution_seconds/86400)} 天。曝光按曝光日统计，点击和消息按事件业务日统计。未归因点击可能尚未收到对应曝光。角色表现按角色汇总。零值仅表示暂无已采集记录；当前日及归因窗口内的数据可能继续更新。`;
+$("definitions").textContent=`统计起点：${coverage} UTC。消息数 = 已采集并去重的 message_sent 事件；角色消息通过 conversation_id 关联到对话的角色。访客按浏览器标识统计，不等同于人数；日均访客只使用快照生成日前的完整 UTC 日，不是区间去重访客。CTR = 被点击曝光 / 合格曝光，同一曝光最多计一次点击；归因窗口 ${count(data.status.attribution_seconds/86400)} 天。曝光按曝光日统计，点击和消息按事件业务日统计。未归因点击可能尚未收到对应曝光。角色表现按角色汇总。零值仅表示暂无已采集记录；当前日及归因窗口内的数据可能继续更新。`;
 window.addEventListener("resize",draw);freshness();setInterval(freshness,60000);recent();
 </script>
 </body>
