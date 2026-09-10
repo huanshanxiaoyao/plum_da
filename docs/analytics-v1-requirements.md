@@ -11,6 +11,11 @@ The first successful model run fixes the start day to today UTC; only source fil
 from that day onward enter the model. Previously stored raw data is left to normal
 retention. First seen means first observed within this explicitly displayed scope.
 
+2026-09-10 correction approved by the user: the first day was invalidated by a
+one-minute Feed probe interacting with former server-side visitor ID minting.
+The trustworthy reporting start is therefore 2026-09-10. This is a one-time data
+quality correction, not permission for future silent coverage resets.
+
 ## Goal and baseline
 
 Give Plum operators a read-only daily view of visitors, qualified feed impressions,

@@ -17,8 +17,11 @@ scoped sources must be projected before ODS expiry. Do not change the start date
 or delete existing data to get past an error.
 Actual B checkout is `/opt/workspace/plum_da`; the deployed units adapt the template
 path `/opt/plum_da`. PostgreSQL is 16/main on loopback port 5432. Migrations
-`007_persistent_analytics` and `008_messages` are applied; coverage is
-**2026-09-09 UTC**, and attribution is **604800 seconds**.
+`007_persistent_analytics` and `008_messages` are applied. The original
+2026-09-09 coverage was superseded by the explicitly approved 2026-09-10 incident
+correction after the first day's visitor state was polluted by a one-minute Feed
+probe and former server-side ID minting. Current coverage is **2026-09-10 UTC**,
+and attribution is **604800 seconds**.
 Ingest/report/watchdog/watchdog-ping timers are enabled/active.
 The dashboard uses protected IP HTTPS at `/plum-report`; the host root serves
 sub2api. Actual host addresses and credentials remain in controlled operations records.

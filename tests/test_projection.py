@@ -163,6 +163,16 @@ def test_new_visitor_day_is_server_receipt_utc_not_client_day(conn):
     assert scalar(conn, "SELECT business_day FROM analytics.visitor_activity") == DAY - timedelta(days=1)
 
 
+def test_server_origin_first_seen_is_rejected_before_polluting_visitors(conn):
+    source(conn, event("visitor_first_seen", props={"entry_path": "/"}))
+
+    with pytest.raises(ProjectionError, match="visitor_first_seen missing client session"):
+        refresh(conn)
+
+    assert scalar(conn, "SELECT count(*) FROM analytics.event_registry") == 0
+    assert scalar(conn, "SELECT count(*) FROM analytics.projected_files") == 0
+
+
 def test_report_entrypoint_can_repeat_after_all_migrations_are_applied(conn, monkeypatch):
     import run_report
     source(conn, event())

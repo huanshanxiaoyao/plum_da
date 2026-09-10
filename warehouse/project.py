@@ -93,6 +93,19 @@ def project(conn, attribution_seconds: int, *, start_day: date | None = None):
                 LEFT JOIN analytics.event_registry e USING(event_id)
                 WHERE e.event_id IS NULL ORDER BY c.event_id, c.server_time
             """)
+            # visitor_first_seen has been client-originated since the identity cutover.
+            # A missing session means a server/probe regression that would turn every
+            # stateless request into a new browser identifier. Fail before persistence.
+            cur.execute("""
+                SELECT event_id FROM fresh_events
+                WHERE event_name = 'visitor_first_seen' AND session_id IS NULL
+                LIMIT 1
+            """)
+            invalid_first_seen = cur.fetchone()
+            if invalid_first_seen:
+                raise ProjectionError(
+                    f"event {invalid_first_seen[0]}: visitor_first_seen missing client session"
+                )
             cur.execute("""
                 INSERT INTO analytics.event_registry
                 SELECT event_id, fingerprint, event_name, visitor_id, server_time, business_day

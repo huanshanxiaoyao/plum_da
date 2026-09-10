@@ -79,4 +79,6 @@ def test_message_metrics_are_present_in_snapshot_template():
     assert data["messages"][0]["messages"] > 0
     html = render(data)
     assert "消息数 · 全角色" in html
+    assert "日均访客 · 全站完整日" in html
+    assert "日均访客只使用快照生成日前的完整 UTC 日" in html
     assert '<th scope="col">曝光</th><th scope="col">点击</th><th scope="col">消息数</th>' in html

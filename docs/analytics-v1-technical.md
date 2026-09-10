@@ -6,6 +6,11 @@ See the [acceptance record](analytics-v1-acceptance.md) for evidence; four unver
 operational checks are the starting work of [phase 2](analytics-phase2-data-quality.md).
 This plan describes implementation, not an instruction to redeploy.
 
+2026-09-10 correction: a one-minute production Feed probe was counted as a new
+visitor by the former server-side ID minting path. The derived model was backed up
+and rebuilt with 2026-09-10 as its trustworthy start; ODS and ingest ledgers remain
+intact. Projection now rejects `visitor_first_seen` without a client session.
+
 ## Boundaries
 
 All warehouse/report changes live in plum_da. The only application change is a
@@ -41,7 +46,8 @@ The attribution interval is measured using corrected occurrence time, not arriva
 Report refresh recomputes daily aggregate tables from persistent facts in one
 transaction, so late events update earlier exposures as well. Store numerator and
 denominator, not averaged ratios. Daily UV remains a daily metric; date-range
-summaries show average daily UV rather than the sum masquerading as distinct UV.
+summaries show average daily UV over completed UTC days rather than the sum
+masquerading as distinct UV or an average diluted by the incomplete current day.
 Static output is a single atomically replaced HTML document. Build failures leave
 the previous complete document in place. The generated document includes its build
 time, ingest watermark, model watermark, coverage start and attribution settings.
@@ -67,8 +73,9 @@ The deployed beta uses an IP TLS/basic-auth `/plum-report` location, with the ho
 root reserved for sub2api. A dedicated subdomain remains a template option, not the
 current deployment. Host addresses and credentials stay in controlled operations
 records. B uses `/opt/workspace/plum_da`; unit templates' `/opt/plum_da` paths were
-adapted during deployment. Coverage is fixed at 2026-09-09 UTC and attribution at
-604800 seconds; documentation closeout must not reactivate or reset the model.
+adapted during deployment. The corrected trustworthy coverage is fixed at
+2026-09-10 UTC and attribution at 604800 seconds; documentation closeout must not
+reactivate or reset the model.
 
 ## Verification and rollback
 
